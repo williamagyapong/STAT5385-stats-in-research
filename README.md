@@ -7,11 +7,11 @@
 
 <!-- badges: end -->
 
-The goal of this repository is to make my assignments’ R codes and
-reports for a course I’m currently taking in Advanced Regression
-Analysis, titled “**Statistics in Research**” at the University of Texas
-at El Paso, available to some of my classmates who requested for them
-for their learning. Their focus is to learn from the R codes\!
+The goal of this repository is to make my assignments’ R codes for a
+course I’m currently taking in Advanced Regression Analysis, titled
+“**Statistics in Research**” at the University of Texas at El Paso,
+available to some of my classmates who requested for them for their
+learning. Their aim is to learn from the R codes\!
 
 To ensure there is no problem with academic dishonesty, the codes are
 published here some days after grades have been received for the
@@ -24,5 +24,7 @@ particular assignment.
 
 **Click the “view code” link above, immediately before this readme file,
 to see the available contents if they don’t show up by default**
+
+A big thanks goes to the students who first made the request.
 
 *Made with love\!*
