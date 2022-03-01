@@ -1,0 +1,84 @@
+---
+title: "Lab - 1.45"
+author: "STAT 5385"
+date: "1/20/2022"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(summarytools)
+library(dplyr)
+
+```
+
+## SENIC Data Read-in
+
+```{r}
+
+setwd("~/teaching/regression analysis/labs")
+
+senic=read.table("C:/Users/awagler2/Documents/teaching/regression analysis/Data Sets/Appendix C Data Sets/APPENC01.txt")
+colnames(senic)=c("ID","LOS","Age","Infec","Cul","Xray","beds","Med","region","avg","nurses","fands")
+head(senic)
+
+senic %>% dfSummary() %>% view()
+```
+
+## Estimate the models (part a of 1.45)
+
+For infection rate the estimated model is $\hat{y} = 6.34 + 0.76 x$ where x is infection rate.  Our MSE = 2.638. There is a positive linear relationship between infection rate and LOS.
+
+```{r}
+#lm stands for linear model=regression model
+mod.a=lm(LOS~Infec,data=senic)
+summary(mod.a)
+#provides MSE, residual variance
+anova(mod.a)
+#don't do this until chap 3
+#plot(mod.a)
+
+mod.b=lm(LOS~fands,data=senic)
+summary(mod.b)
+anova(mod.b)
+
+mod.c=lm(LOS~Xray,data=senic)
+summary(mod.c)
+anova(mod.c)
+```
+
+## Plot the model
+
+For this section comment on whether you think the model is linear or not.
+
+```{r}
+with(senic,plot(Infec,LOS))
+abline(lm(LOS~Infec,data=senic))
+
+with(senic,plot(fands,LOS))
+abline(lm(LOS~fands,data=senic))
+
+with(senic,plot(Xray,LOS))
+abline(lm(LOS~Xray,data=senic))
+
+```
+
+## This is 1.46 more or less-see if you can finish it for regions 2,3 and 4 (this is completely optional)
+
+```{r}
+mod.r1=lm(LOS~Infec,data=senic[senic$region==1,])
+summary(mod.r1)
+
+mod.r2=lm(LOS~Infec,data=senic[senic$region==2,])
+summary(mod.r2)
+
+mod.r3=lm(LOS~Infec,data=senic[senic$region==3,])
+summary(mod.r3)
+
+mod.r4=lm(LOS~Infec,data=senic[senic$region==4,])
+summary(mod.r4)
+
+```

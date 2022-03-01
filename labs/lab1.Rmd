@@ -1,0 +1,218 @@
+---
+title: 'STAT 5385: Lab 1'
+author: "Willliam Ofosu Agyapong"
+date: "1/21/2022"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = F, collapse = T, fig.align = "center")
+
+library(summarytools)
+library(dplyr)
+library(knitr)
+
+```
+
+
+```{r, echo=FALSE}
+var_table <- data.frame(
+  actual = c("Identification Number", "Length of stay", "Age", "Infection risk",
+             "Routine culturing ratio", "Routine chest X-ray ratio",
+             "Number of beds", "Medical school affiliation", "Region",
+             "Average daily census", "Number of nurses", "Available facilities and services"),
+  coded_names = c("ID", "LOS", "age", "infec_risk", "cul_ratio", "xray_ratio",
+               "beds", "med", "region", "ADC", "nurses", "AFS")
+)
+
+kable(var_table, col.names = c("Variable Name", "Coded As"),
+      caption = "Variables in the SENIC dataset")
+```
+
+## Reading in the SENIC dataset
+
+```{r}
+# Get the file path
+dir_path <-  dirname(rstudioapi::getSourceEditorContext()$path)
+# set the current working directory to this path
+setwd(dir_path) 
+
+# Import the dataset from local drive
+senic <- read.table(file = "../Data Sets/Appendix C Data Sets/APPENC01.txt",
+                    header = FALSE)
+
+# View first few observations; Everything looks good.
+head(senic)
+
+# Rename columns
+names(senic) <- var_table$coded_names
+
+# Obtain summary report
+senic %>% dfSummary() %>% view()
+```
+
+ *With the help of the `summarytools` package we observe that the data has 12 variables with 113 observations as expected, with no missing values. The data is pre-cleaned, so we dive straight into the modeling.*
+
+# Problem 1.45
+
+For this part, the average length of stay in a hospital ($Y$, `LOS`) is the response variable, while the infection risk (`infec_risk`), available facilities and services (`AFS`), and routine chest X-ray (`xray_ratio`) constitute the individual predictor variables.
+
+## Part (a): Estimating the models 
+
+### Infection risk
+
+```{r}
+mod_infec_risk <- lm(LOS ~ infec_risk, data = senic)
+summary(mod_infec_risk)
+```
+
+From the above output, for infection risk, the estimated regression function is $\hat{y} = `r round(mod_infec_risk$coefficients[1],2)` + `r round(mod_infec_risk$coefficients[2],2)` x$, where x is the infection risk. There is a positive linear relationship between infection risk and LOS.
+
+
+### Available facilities and services (AFS)
+
+```{r}
+mod_AFS <- lm(LOS ~ AFS, data = senic)
+summary(mod_AFS)
+```
+
+From the above output, for AFS , the estimated regression function is $\hat{y} = `r round(mod_AFS$coefficients[1],2)` + `r round(mod_AFS$coefficients[2],2)` x$, where x is AFS. There is a positive linear relationship between AFS and LOS.
+
+
+### Chest X-ray Ratio
+
+```{r}
+mod_xray_ratio <- lm(LOS ~ xray_ratio, data = senic)
+summary(mod_xray_ratio)
+```
+
+From the above output, for X-ray ratio, the estimated regression function is $\hat{y} = `r round(mod_xray_ratio$coefficients[1],2)` + `r round(mod_xray_ratio$coefficients[2],2)` x$, where x is the X-ray ratio. There is a positive linear relationship between chest X-ray ratio and LOS.
+
+
+
+## Part (b): Plot the model
+
+The following plots suggest that a linear relation appear to provide a good fit for each of the three predictor variables since, in all three plots, majority of the data points with the exception of few outliers are centered around the fitted regression line.
+
+```{r}
+library(ggplot2)
+
+# with(senic,plot(infec_risk,LOS))
+# abline(lm(LOS~infec_risk,data=senic))
+
+ggplot(senic, aes(infec_risk, LOS)) +
+  geom_point(alpha = 0.6, shape = 16) +
+  labs(x="Infection Risk", y="Average Length of Stay",
+       title = "Plot of Length of Stay versus Infection Risk") +
+  theme_classic() +
+  geom_smooth(method = "lm", se=FALSE)
+
+# LOS vs. AFS
+ggplot(senic, aes(AFS, LOS)) +
+  geom_point(alpha = 0.6, shape = 16) +
+  labs(x="Available facilities and services", y="Average Length of Stay", 
+       title = "Plot of Length of Stay versus AFS") +
+  theme_classic() +
+  geom_smooth(method = "lm", se=FALSE)
+
+# LOS vs. xray_ratio
+ggplot(senic, aes(xray_ratio, LOS)) +
+  geom_point(alpha = 0.6, shape = 16) +
+  labs(x="X-ray Ratio", y="Average Length of Stay", 
+       title = "Plot of Length of Stay versus X-ray Ratio") +
+  theme_classic() +
+  geom_smooth(method = "lm", se=FALSE)
+```
+
+## Part (c): Calculate MSE
+
+```{r}
+mse <- c(round(anova(mod_infec_risk)$`Mean Sq`[2], 4),
+         round(anova(mod_AFS)$`Mean Sq`[2], 4),
+         round(anova(mod_xray_ratio)$`Mean Sq`[2], 4)
+         )
+data.frame(
+  Predictor = c("Infection Risk", "AFS", "X-ray Ratio"),
+  MSE = mse
+) %>%
+  kable(caption = "MSE for each of the three predictor variables")
+```
+
+**From the table, it is seen that the predictor variable, `infection risk`, with the lowest MSE of `2.6375` leads to the smallest variability around the fitted regression line.**
+
+
+# Problem 1.46
+
+## Part (a)
+
+```{r collapse=FALSE}
+models <- list() # initialize empty list
+
+# Get the various regions
+regions <- as.integer(levels(as.factor(senic$region)))
+
+# fit individual models for each region
+for(i in regions) {
+  models[[i]] = senic %>%
+    filter(region == i) %>%
+    lm(LOS ~ infec_risk, data = .)
+  print(paste("Estimated model summary for region", i))
+  print(summary(models[[i]]))
+}
+ 
+```
+
+**Estimated Regression Functions for each Region**
+
+From the above outputs, for each region, the estimated regression function of average length of stay and infection risk (x) is:
+
+- Region 1 (NE):
+$\hat{y} = `r round(models[[1]]$coefficients[1],2)` + `r round(models[[1]]$coefficients[2],2)` x$. 
+
+- Region 2 (NC):
+$\hat{y} = `r round(models[[2]]$coefficients[1],2)` + `r round(models[[2]]$coefficients[2],2)` x$. 
+
+- Region 3 (S):
+$\hat{y} = `r round(models[[3]]$coefficients[1],2)` + `r round(models[[3]]$coefficients[2],2)` x$. 
+
+- Region 4 (W):
+$\hat{y} = `r round(models[[4]]$coefficients[1],2)` + `r round(models[[4]]$coefficients[2],2)` x$. 
+
+## Part (b)
+
+With the help of the estimated models in part (a) and the graph below, we can say that the estimated regression functions are not similar for the four regions. This is because although there is positive linear relationship between infection risk and LOS across all regions, the effect of infection risk on LOS differ substantially from region to region. For instance, for every unit increase in infection risk we expect LOS to increase by ``r round(models[[1]]$coefficients[2],2)`` for the `NE` region, while the same unit increase in infection risk leads to only ``r round(models[[4]]$coefficients[2],2)`` increase in LOS on average for the `NC` region.
+
+```{r}
+senic %>% 
+  mutate(region2 = factor(region,
+                          levels = 1:4,
+                          labels = c("NE", "NC", "S", "W"))
+  ) %>%
+  ggplot(aes(infec_risk, LOS)) +
+  geom_point(alpha = 0.6, shape = 16) +
+  facet_grid(cols = vars(region2), scales = "free_x")+
+  labs(x="Infection Risk", y="Average Length of Stay",
+       title = "Plot of Length of Stay versus Infection Risk for each Region") +
+  theme_classic() +
+  geom_smooth(method = "lm", se=FALSE)
+```
+
+## Part (c): Calculate MSE
+```{r}
+mse <- c(round(anova(models[[1]])$`Mean Sq`[2], 4),
+         round(anova(models[[2]])$`Mean Sq`[2], 4),
+         round(anova(models[[3]])$`Mean Sq`[2], 4),
+         round(anova(models[[4]])$`Mean Sq`[2], 4)
+         )
+data.frame(
+  Region = c("NE", "NC", "S", "W"),
+  MSE = mse
+) %>%
+  kable(caption = "MSE for each of the four regions")
+```
+
+**Clearly, the variability around the fitted regression line is not the same for all the four regions. However, we observe that three regions (`NC`, `S`, `W`) have approximately the same variability around `1` which differ greatly from that of the `NE` region. In all, the S region provides the smallest amount of variability.**
+
+

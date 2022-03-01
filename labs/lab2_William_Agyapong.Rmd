@@ -1,0 +1,218 @@
+---
+title: 'STAT 5385: `r params$lab_number`'
+author: "Willliam Ofosu Agyapong"
+date: "`r format(Sys.Date(), '%d/%m/%Y')`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    number_section: yes
+header-includes:
+  - \usepackage{fancyhdr}
+  - \pagestyle{fancy}
+  - \fancyhf{}
+  - \rhead{William O. Agyapong}
+  - \lhead{STAT 5385 - Lab `r params$lab_number`}
+  - \cfoot{\thepage}
+geometry: margin = 0.8in
+fontsize: 10pt
+params:
+  lab_number: 2
+---
+
+```{r setup, include=FALSE}
+# Set global options for output rendering
+knitr::opts_chunk$set(echo = T, warning = F, message = F, fig.align = "center")
+
+# Load required packages
+library(summarytools)
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(broom)
+library(ggplot2)
+# library(kableExtra)
+library(knitr)
+
+# Set the current working directory to the file path
+setwd(dirname(rstudioapi::getSourceEditorContext()$path)) 
+
+# Set default rounding to 4 decimal places
+options(digits = 4)
+
+# Set default ggplot theme
+theme_set(theme_classic())
+```
+
+
+## Reading in the SENIC dataset
+
+```{r}
+# Import the dataset from local drive
+senic <- read.table(file = "../Data Sets/Appendix C Data Sets/APPENC01.txt",
+                    header = FALSE)
+
+# View first few observations; Everything looks good.
+head(senic)
+
+# Rename columns
+coded_names <- c("ID", "LOS", "age", "infec_risk", "cul_ratio", "xray_ratio",
+               "beds", "med", "region", "ADC", "nurses", "AFS")
+names(senic) <- coded_names
+```
+
+
+## 2.64: Which $R^2$ is largest?
+
+```{r}
+# Create a new dataset for convenient modeling.
+senic_nested <- senic %>%
+  # Select variables of interest
+  select(LOS, Infection_Risk=infec_risk, AFS, Chest_Xray_ratio=xray_ratio) %>%
+  # Transform data to long format to aid nesting
+  pivot_longer(-LOS, names_to = "predictor", values_to = "pred_value") %>%
+  nest(-predictor) 
+
+# Fit a linear regression model between LOS and each predictor,
+models <- senic_nested %>%
+  mutate(model = map(data, ~ lm(LOS ~ pred_value, data = .))) 
+
+# Extract desired performance metrics.
+mdl_metrics <- models %>%
+  mutate(metrics = map(model, glance)) %>%
+  unnest(metrics) %>%
+  select(predictor, r.squared, sigma) %>%
+  mutate(sigma.squared = sigma^2, .keep = "unused") %>%
+  arrange(desc(r.squared))
+
+# Display results
+names(mdl_metrics) <- c("Predictor", "$R^2$", "MSE")
+kable(mdl_metrics, escape = F, caption = "Performance metrics for models Involving each predictor")
+```
+
+Looking at the $R^2$ column, it turns out **Infection Risk** accounts for the largest reduction in the variability of the average length of stay.
+
+
+### Interval estiamtes for slopes
+
+```{r}
+# Extract confidence estimates along other measures for the slopes.
+mdl_estimates <- models %>%
+  mutate(estimates = map(model, tidy, conf.int = T, conf.level = 0.95)) %>%
+  unnest(estimates) %>%
+  filter(term == "pred_value") %>%
+  rename(slope = estimate) %>%
+  mutate(CI.length = conf.high - conf.low) %>%
+  select(-c(data, model, term, statistic, p.value))
+
+# Display results
+kable(mdl_estimates, escape = F, caption = "Model results for each predictor along with 95 % confidence intervals of $\\beta_1$")
+```
+We observe that the regression line for the predictor, infection risk, appears to differ greatly from those of available facilities and services (AFS) and the chest X-ray ratio.
+This is further accentuated by the plots that follow.
+
+### CI and PI bands on the models
+
+```{r}
+# Append confidence/prediction estimates for the slopes to the data for plotting.
+PI_df <- models %>%
+  mutate(newdata = map(model, augment, interval = "prediction")) %>%
+  unnest(newdata) %>%
+  select(PI.lwr = .lower, PI.upr = .upper)
+
+senic_augmented <- models %>%
+  mutate(newdata = map(model, augment, interval = "confidence")) %>%
+  unnest(newdata) %>%
+  bind_cols(PI_df) %>%
+  mutate(predictor = recode(predictor,
+                            Infection_Risk = "Infection Ratio",
+                            Chest_Xray_ratio = "Chest X-ray Ratio",
+                            AFS = "Available facilities & services"
+  )) 
+
+#----create plot-----
+# define colors to help add legend
+colors <- c("CI"="green", "PI"="coral2")
+ggplot(senic_augmented, aes(x = pred_value, y = LOS)) +
+  geom_point(color='#2980B9', size = 2) + #add scatterplot points
+  geom_smooth(method = lm, color='#2C3E50') + #confidence bands
+  geom_line(aes(y = .lower, color = "CI"), linetype = "dashed") + #lwr conf interval
+  geom_line(aes(y = .upper, color = "CI"), linetype = "dashed") + #upr conf interval 
+  geom_line(aes(y = PI.lwr, color = "PI"), linetype = "dashed") + #lwr pred interval
+  geom_line(aes(y = PI.upr, color = "PI"), linetype = "dashed") + #upr pred interval
+  labs(x = "Predictors", y = "Length of stay (LOS)", color = "",
+       title = "Plots showing CI and PI bands on the models for each predictor") +
+  scale_color_manual(values = colors) +
+  facet_wrap(~predictor, scales = "free") +
+  theme(legend.position = "bottom" )
+``` 
+
+
+## 2.65: Interval estiamtes of $\beta_1$ for each region
+
+```{r}
+# Create a new dataset for convenient modeling.
+senic_nested2 <- senic %>%
+  # Select variables of interest
+  select(LOS, Infection_Risk=infec_risk, region) %>%
+  nest(-region) 
+
+# Fit a linear regression model between LOS and infection for each region.
+models2 <- senic_nested2 %>%
+  mutate(model = map(data, ~ lm(LOS ~ Infection_Risk, data = .))) 
+
+mdl_result <- models2 %>%
+  mutate(metrics = map(model, tidy, conf.int = T, conf.level = 0.95)) %>%
+  unnest(metrics) %>%
+  filter(term == "Infection_Risk") %>%
+  select(-c(data, model, statistic, p.value)) %>%
+  rename(slope = estimate) %>%
+  mutate(CI.length = conf.high - conf.low) %>%
+  mutate(region_label = factor(region, levels = 1:4,
+                       labels = c("NE", "NC", "S", "W")),
+         .after = "region") %>%
+  arrange(region)
+  
+# Display results
+kable(mdl_result, escape = F, align = "c",
+      caption = "Model results for each region with 95 % confidence intervals of $\\beta_1$")
+```
+
+
+The information in the above table suggests that the regression lines for the different regions have different slopes.  This is due to the differences in the magnitude of the slopes and largely due to the variability around each slope. Notwithstanding, we do see similarities between pairs of regions, for instance, the regression lines for regions **2** and **3** appear to have similar slopes, and so do regions **1** and **4**, as clearly indicated by the length of the confidence intervals.
+
+
+
+### CI and PI bands on the models
+
+```{r}
+# Append confidence/prediction estimates for the slopes to the data for plotting.
+PI_df_region <- models2 %>%
+  mutate(newdata = map(model, augment, interval = "prediction")) %>%
+  unnest(newdata) %>%
+  select(PI.lwr = .lower, PI.upr = .upper)
+
+senic_region_augmented <- models2 %>%
+  mutate(newdata = map(model, augment, interval = "confidence")) %>%
+  unnest(newdata) %>%
+  bind_cols(PI_df_region) %>%
+  mutate(region_label = factor(region, levels = 1:4,
+                       labels = c("Region 1: NE", "Region 2: NC", "Region 3: S", "Region 1: W")),
+         .after = "region")
+
+#----create plot-----
+# define colors to help add legend
+colors <- c("CI"="green", "PI"="coral2")
+ggplot(senic_region_augmented, aes(x = Infection_Risk, y = LOS)) +
+  geom_point(color='#2980B9', size = 2) + #add scatterplot points
+  geom_smooth(method = lm, color='#2C3E50') + #confidence bands
+  geom_line(aes(y = .lower, color = "CI"), linetype = "dashed") + #lwr conf interval
+  geom_line(aes(y = .upper, color = "CI"), linetype = "dashed") + #upr conf interval 
+  geom_line(aes(y = PI.lwr, color = "PI"), linetype = "dashed") + #lwr pred interval
+  geom_line(aes(y = PI.upr, color = "PI"), linetype = "dashed") + #upr pred interval
+  labs(x = "Infection Risk", y = "Length of stay (LOS)", color="",
+       title = "Plots showing CI and PI bands on the models for each region") +
+  scale_color_manual(values = colors) +
+  facet_wrap(~region_label, scales = "free") +
+  theme(legend.position = "bottom")
+``` 
+

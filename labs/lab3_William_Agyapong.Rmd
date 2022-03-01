@@ -1,0 +1,131 @@
+---
+title: 'STAT 5385: Lab 3'
+author: "Willliam Ofosu Agyapong"
+date: "`r format(Sys.Date(), '%m/%d/%Y')`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    number_section: yes
+header-includes:
+  - \usepackage{fancyhdr}
+  - \pagestyle{fancy}
+  - \fancyhf{}
+  - \rhead{William O. Agyapong}
+  - \lhead{STAT 5385 - LAB 3}
+  - \cfoot{\thepage}
+geometry: margin = 0.8in
+fontsize: 10pt
+---
+
+```{r setup, include=FALSE}
+# Set global options for output rendering
+knitr::opts_chunk$set(echo = T, warning = F, message = F, fig.align = "center")
+
+# Load required packages
+library(summarytools)
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(broom)
+library(ggplot2)
+# library(kableExtra)
+library(knitr)
+
+# Set the current working directory to the file path
+setwd(dirname(rstudioapi::getSourceEditorContext()$path)) 
+
+# Set default rounding to 4 decimal places
+options(digits = 4)
+
+# Set default ggplot theme
+theme_set(theme_classic())
+```
+
+
+## Problem 3.9: Electricity Consumption
+
+An economist studying the relation between household electricity
+consumption (Y ) and number of rooms in the home (X) employed linear regression model
+and obtained the following residuals:
+
+```{r}
+# Import the dataset from local drive
+electric_resid <- read.table(file = "../Data Sets/Chapter  3 Data Sets/CH03PR09.txt",
+                    header = FALSE)
+
+# View first few observations; Everything looks good.
+electric_resid <- electric_resid %>% 
+  mutate(i = as.character(1:n()), .before = "V1")
+colnames(electric_resid) <- c("i", "X", "e")
+electric_resid2 <- electric_resid
+colnames(electric_resid2) <- c("i", "$X_i$", "$e_i$")
+kable(t(electric_resid2))
+
+```
+
+We then create a scatter plot of the residuals versus the predictor variable to assess some of the assumptions of the underlying regression model.
+
+```{r}
+ggplot(electric_resid, aes(x = X, y = e)) +
+  geom_point() +
+  labs(x="Predictor (X)", y="Residuals (e)")
+
+```
+
+
+From the plot, the following problems should be of concern:
+
+- We see that the regression relationship is clearly not linear.
+- The error terms appear not to have constant variance. The errors seem to vary in a systematic fashion; the residual is negative for predictor values between 3 and 9, and positive otherwise.
+
+Yes, I believe an appropriate transformation, such as including a quadratic term, might help remedy the problem.
+
+## Using the Prestige data available in the `Car` package.
+
+In this example, we model prestige as a function of education.
+
+```{r}
+library(car)
+
+# Inspect the data
+kable(sample_n(Prestige, 6))
+```
+
+### Initial Explaration of the variables of interest.
+```{r}
+scatterplot(prestige ~ education, data=Prestige, id=list(n=4))
+```
+
+The above graph provides useful information about the distributions of prestige and education as well as the relationship between the two variables. For instance, the boxplots tell us that the distribution of education is roughly symmetric while the distribution of prestige appears skewed to the right. Also, there appears to be a positive linear relationship between prestige and education. 
+
+Next, we proceed to model the relationship between prestige and education, which will provide a formal way to help us assess our initial observations, and the appropriateness of our proposed model.
+
+
+```{r}
+# fit a model between prestige and income or education
+# and apply appropriate transformation
+mdl_prestige_vs_edu <- lm(prestige ~ education, data = Prestige)
+summary(mdl_prestige_vs_edu)
+
+```
+From the above output, for prestige (Y) and education (X) , the estimated regression function is $\hat{Y} = `r round(mdl_prestige_vs_edu$coefficients[1],2)` + `r round(mdl_prestige_vs_edu$coefficients[2],2)` X$, where the slope coefficient signifies a positive relationship between education and prestige. That is, as education increases prestige appears to also increase. We defer the type of relationship present to the next section.
+
+
+```{r}
+# Obtain diagnostic plots
+par(mfrow = c(2,2))
+plot(mdl_prestige_vs_edu)
+```
+
+- Linearity: We observe from the Residuals vs. Fitted plot that there is a linear relationship between prestige and education. This suggests that a linear regression function might be appropriate to model the relationship between prestige and education.
+
+- Constant Error Variance: Again, the Residuals vs. Fitted plot suggests that the error variance are roughly equal.
+
+- Normality of Error Terms: the normal Q-Q plot provides some evidence of a slight departure of the error terms from normality, as seen in the upper part of the plot, probably due to the skewness observed earlier from looking at the boxplot for prestige. I will conclude that this is not too concerning, so the residuals can be assumed to be normally distributed.
+
+- Outliers: From the Residuals vs. Fitted and Scale-location, there appears to be some outliers, but probably not too much concerning.
+
+Overall, a linear regression function appears to provide a better fit for the relationship between prestige and education.
+
+
+

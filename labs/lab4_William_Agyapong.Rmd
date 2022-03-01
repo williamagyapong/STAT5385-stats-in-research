@@ -1,0 +1,341 @@
+---
+title: 'STAT 5385: Lab `r params$lab_number`'
+author: "Willliam Ofosu Agyapong"
+date: "`r format(Sys.Date(), '%d/%m/%Y')`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    number_section: yes
+header-includes:
+  - \usepackage{fancyhdr}
+  - \pagestyle{fancy}
+  - \fancyhf{}
+  - \rhead{William O. Agyapong}
+  - \lhead{STAT 5385 - Lab `r params$lab_number`}
+  - \cfoot{\thepage}
+geometry: margin = 0.8in
+fontsize: 10pt
+params:
+  lab_number: 4
+---
+
+
+```{r setup, include=FALSE}
+# Set global options for output rendering
+knitr::opts_chunk$set(echo = T, warning = F, message = F, fig.align = "center")
+
+# Load required packages
+# library(summarytools)
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(broom)
+library(ggplot2)
+# library(kableExtra)
+library(knitr)
+library(patchwork)
+
+# Set the current working directory to the file path
+setwd(dirname(rstudioapi::getSourceEditorContext()$path)) 
+
+# Set default rounding to 4 decimal places
+options(digits = 4)
+
+# Define a default ggplot theme
+theme_set(theme_classic())
+```
+
+# Introducing the SENIC data
+```{r, echo=FALSE}
+var_table <- data.frame(
+  actual = c("Identification Number", "Length of stay", "Age", "Infection risk",
+             "Routine culturing ratio", "Routine chest X-ray ratio",
+             "Number of beds", "Medical school affiliation", "Region",
+             "Average daily census", "Number of nurses", "Available facilities and services"),
+  coded_names = c("ID", "LOS", "age", "infec_risk", "cul_ratio", "xray_ratio",
+               "beds", "med", "region", "ADC", "nurses", "AFS")
+)
+
+kable(var_table, col.names = c("Variable Name", "Coded As"),
+      caption = "Variables in the SENIC dataset")
+```
+
+## Reading in the dataset
+
+```{r}
+# Import the dataset from local drive
+senic <- read.table(file = "../Data Sets/Appendix C Data Sets/APPENC01.txt",
+                    header = FALSE)
+
+# Rename columns
+names(senic) <- var_table$coded_names
+
+# View first few observations; Everything looks good.
+head(senic)
+
+# Obtain summary report
+# senic %>% dfSummary() %>% view()
+```
+
+
+# Problem 3.27
+
+## Part (a): Diagnostic Plots
+
+### Infection Risk
+
+```{r}
+# Fit a linear model
+mod_infec_risk <- lm(LOS ~ infec_risk, data = senic)
+
+# residuals against infection risk
+ par(mfrow=c(2,2))
+
+plot(senic$infec_risk, resid(mod_infec_risk),
+     xlab = "Infection Risk (X)", ylab = "Residual"); abline(h=0)
+
+plot(senic$infec_risk, rstudent(mod_infec_risk),
+     xlab = "Infection Risk (X)", ylab = "Studentized Residual"); abline(h=0)
+
+# normal probability plot
+plot(mod_infec_risk, which = 2)
+
+# investigating outliers
+summary(senic[, c("LOS", "infec_risk")])
+
+# look at potential outliers: 47 and 112
+senic[c(47,76,112), c("LOS", "infec_risk")]
+```
+
+- Potential outliers, Looking at the residual versus the majority of observations are between 4 and 6 rate of infection risk.
+They can influence the kind of transformation
+
+- 
+
+### Available Facilities and Services (AFS)
+
+```{r}
+mod_AFS <- lm(LOS ~ AFS, data = senic)
+# residuals agains infection risk
+par(mfrow = c(2,2))
+plot(senic$AFS, resid(mod_AFS),
+     xlab = "AFS (X)", ylab = "Residual"); abline(h=0)
+
+plot(senic$AFS, rstudent(mod_AFS),
+     xlab = "AFS (X)", ylab = "Studentized Residual"); abline(h=0)
+
+# normal probability plot
+plot(mod_AFS, which = 2)
+
+# investigating outliers
+summary(senic[, c("LOS", "AFS")])
+
+# look at potential outliers: 47 and 112
+senic[c(34,47,112), c("LOS", "AFS")]
+```
+
+
+### Chest X-ray Ratio
+
+
+```{r}
+mod_xray_ratio <- lm(LOS ~ xray_ratio, data = senic)
+# residuals agains infection risk
+par(mfrow = c(2,2))
+plot(senic$xray_ratio, resid(mod_xray_ratio),
+     xlab = "X-ray Ratio", ylab = "Residual"); abline(h=0)
+
+plot(senic$xray_ratio, rstudent(mod_xray_ratio),
+     xlab = "X-ray Ratio (X)", ylab = "Studentized Residual"); abline(h=0)
+
+# normal probability plot
+plot(mod_xray_ratio, which = 2)
+
+# investigating outliers
+summary(senic[, c("LOS", "xray_ratio")])
+
+# look at potential outliers: 47 and 112
+senic[c(33,47,112), c("LOS", "xray_ratio")]
+```
+
+- Two data points at the 47th and 112th observations were identified as obvious outliers in all three models.
+- The two extreme observations appear to be the main factor contributing to the of lack of fit in all the models.
+- Therefore, except for the outliers causing some departures, a linear regression appears to be slightly more appropriate in the cases involving X-ray ratio and AFS as predictors than the model involving infection risk.
+
+
+## Part (b): Models without outlying observations
+
+Observations **47** and **112** appeared to be extreme values for all the three models involving the three individual predictors. As a next step, we refit all models without these two observations  to assess their impact on model performance.
+
+### Infection Risk
+```{r}
+senic2 <- senic[-c(47, 112),] # data without outliers
+mod_infec_risk_b <- lm(LOS ~ infec_risk, data = senic2)
+# summary(mod_infec_risk_b)
+
+# residuals agains infection risk
+par(mfrow = c(2,2))
+plot(senic2$infec_risk, resid(mod_infec_risk_b),
+     xlab ="Infection Risk (X)",ylab ="Residual"); abline(h=0)
+
+plot(senic2$infec_risk, rstudent(mod_infec_risk_b),
+     xlab ="Infection Risk (X)",ylab ="Studentized Residual"); abline(h=0)
+
+# normal probability plot
+plot(mod_infec_risk_b, which = 2)
+# investigating outliers
+# look at 
+summary(senic[, c("LOS","infec_risk")])
+senic2[c(34,104), c("LOS","infec_risk")]
+
+```
+
+#### $95\%$ Prediction Intervals
+```{r}
+# obtaining 95% prediction interval at Xh = 6.5
+kable(predict(mod_infec_risk_b, newdata = data.frame(infec_risk = 6.5), interval = "prediction"))
+
+# obtaining 95% prediction interval at Xh = 5.9
+kable(predict(mod_infec_risk_b, newdata = data.frame(infec_risk = 5.9), interval = "prediction"))
+```
+**Clearly, observations $Y_{47} = 19.56$ and $Y_{112} = 17.94$ lie far outside the two prediction intervals corresponding to $X_h=6.5$ and $X_h=5.9$, respectively.**
+
+The fact that the observations fall outside the prediction intervals could be an indication that those observations most likely arose from measurement errors.
+
+### Available Facilities and Services (AFS)
+```{r}
+senic2 <- senic[-c(47, 112),] # data without outliers
+mod_AFS_b <- lm(LOS ~ AFS, data = senic2)
+# summary(mod_AFS_b)
+
+# residuals agains infection risk
+par(mfrow = c(2,2))
+plot(senic2$AFS, resid(mod_AFS_b),
+     xlab ="AFS (X)",ylab ="Residual"); abline(h=0)
+
+plot(senic2$AFS, rstudent(mod_AFS_b),
+     xlab ="AFS (X)",ylab ="Studentized Residual"); abline(h=0)
+
+# normal probability plot
+plot(mod_AFS_b, which = 2)
+# investigating outliers
+# look at 
+summary(senic[, c("LOS","AFS")])
+senic2[c(34,104), c("LOS","AFS")]
+
+```
+
+
+#### $95\%$ Prediction Intervals
+```{r}
+# obtaining 95% prediction interval at Xh = 51.4
+kable(predict(mod_AFS_b, newdata = data.frame(AFS = 51.4), interval = "prediction"))
+
+# obtaining 95% prediction interval at Xh = 62.9
+kable(predict(mod_AFS_b, newdata = data.frame(AFS = 62.9), interval = "prediction"))
+```
+**The same observation is made here. The observations fall outside the prediction  intervals**.
+
+### Chest X-ray Ratio
+```{r}
+senic2 <- senic[-c(47, 112),] # data without outliers
+mod_xray_ratio_b <- lm(LOS ~ xray_ratio, data = senic2)
+# summary(mod_AFS_b)
+
+# residuals agains infection risk
+par(mfrow = c(2,2))
+plot(senic2$xray_ratio, resid(mod_xray_ratio_b),
+     xlab ="X-ray Ratio",ylab ="Residual"); abline(h=0)
+
+plot(senic2$xray_ratio, rstudent(mod_xray_ratio_b),
+     xlab ="X-ray Ratio (X)",ylab ="Studentized Residual"); abline(h=0)
+
+# normal probability plot
+plot(mod_xray_ratio_b, which = 2)
+# investigating outliers
+# look at 
+summary(senic2[, c("LOS","xray_ratio")])
+senic2[c(34,104), c("LOS","xray_ratio")]
+
+```
+
+#### $95\%$ Prediction Intervals
+```{r}
+# obtaining 95% prediction interval at Xh = 113.7
+kable(predict(mod_xray_ratio_b, newdata = data.frame(xray_ratio = 113.7), interval = "prediction"))
+
+# obtaining 95% prediction interval at Xh = 91.8
+kable(predict(mod_xray_ratio_b, newdata = data.frame(xray_ratio = 91.8), interval = "prediction"))
+```
+**As noted earlier in the other cases, the observations are also outside these prediction intervals, and  this could be a signal that the observations are that extreme due to possible measurement errors**
+
+**When comparing the models**
+
+
+# Problem 3.28
+
+```{r collapse=FALSE}
+models <- list() # initialize empty list
+
+# Get the various regions
+regions <- as.integer(levels(as.factor(senic$region)))
+
+# fit individual models for each region
+for(i in regions) {
+  models[[i]] = senic %>%
+filter(region == i) %>%
+    lm(LOS ~ infec_risk, data = .)
+  # print(paste("Estimated model summary for region", i))
+  # print(summary(models[[i]]))
+}
+ 
+```
+
+
+## Diagnostic plots
+
+We look at diagnostic plots for models involving Length of Stay (Y) and Infection Risk for each region.
+
+### Region 1
+```{r}
+
+# region 1
+par(mfrow = c(1,2))
+plot(senic[senic$region==1,]$infec_risk, resid(models[[1]]),
+     xlab ="Infection Risk (for region 1)",ylab = "Residual"); abline(h=0) # residuals against infection risk
+plot(models[[1]], which = 2)# normal probability plot
+```
+
+
+### Region 2
+```{r}
+par(mfrow = c(1,2))
+plot(senic[senic$region==2,]$infec_risk, resid(models[[2]]),
+     xlab ="Infection Risk (for region 2)",ylab = "Residual"); abline(h=0) # region 2
+plot(models[[2]], which = 2)# normal probability plot
+```
+
+
+### Region 3
+```{r}
+par(mfrow = c(1,2))
+plot(senic[senic$region==3,]$infec_risk, resid(models[[3]]), 
+     xlab ="Infection Risk (for region 3)",ylab = "Residual"); abline(h=0) # region 3
+plot(models[[3]], which = 2)# normal probability plot
+```
+
+
+
+### Region 4
+```{r}
+par(mfrow = c(1,2))
+plot(senic[senic$region==4,]$infec_risk, resid(models[[4]]),
+     xlab ="Infection Risk (for region 4)",ylab = "Residual"); abline(h=0) # region 4
+plot(models[[4]], which = 2)# normal probability plot
+
+```
+
+
+The residual versus predictor plots suggest that the error variance differ substantially across the four regions. There appear to be increasing error variance with levels of infection risk in region 1, while the other regions exhibit randomness.
+
+Additionally, except region 2 there appear to be serious departure of error term distribution from normality.
