@@ -24,5 +24,7 @@ To ensure there is no problem with academic dishonesty, the codes are published 
 
 > It is my pleasure that you find these materials helpul. Feel free to point out any mistakes/inconsistencies you find therein, especially in the R codes, since "Mistakes are a fact of life. It is the response to error that counts.", as said by Mikki Giovanni.
 
+**Click the "view code" link above, immediately before this readme file, to see the available contents if they don't show up by default**
+
 *Made with love!*
 

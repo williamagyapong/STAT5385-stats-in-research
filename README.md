@@ -22,4 +22,7 @@ particular assignment.
 > the R codes, since “Mistakes are a fact of life. It is the response to
 > error that counts.”, as said by Mikki Giovanni.
 
+**Click the “view code” link above, immediately before this readme file,
+to see the available contents if they don’t show up by default**
+
 *Made with love\!*
