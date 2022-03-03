@@ -17,7 +17,7 @@ To ensure there is no problem with academic dishonesty, the codes are
 published here some days after grades have been received for the
 particular assignment.
 
-> It is my pleasure that you find these materials helpul. Feel free to
+> It is my pleasure that you find these materials helpful. Feel free to
 > point out any mistakes/inconsistencies you find therein, especially in
 > the R codes, since “Mistakes are a fact of life. It is the response to
 > error that counts.”, as said by Mikki Giovanni.
