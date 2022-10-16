@@ -1,0 +1,230 @@
+---
+title: 'STAT 5385: Lab `r params$lab_number`'
+author: "Willliam Ofosu Agyapong"
+date: "`r format(Sys.Date(), '%d/%m/%Y')`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    number_section: yes
+header-includes:
+  - \usepackage{fancyhdr}
+  - \pagestyle{fancy}
+  - \fancyhf{}
+  - \rhead{William O. Agyapong}
+  - \lhead{STAT 5385 - Lab `r params$lab_number`}
+  - \cfoot{\thepage}
+geometry: margin = 0.8in
+fontsize: 10pt
+params:
+  lab_number: 9
+---
+
+
+```{r setup, include=FALSE}
+# Set global options for output rendering
+knitr::opts_chunk$set(echo = T, warning = F, message = F, fig.align = "center")
+
+# Load required packages
+library(summarytools)
+library(dplyr)
+library(ggplot2)
+library(broom)
+library(car)
+library(rsq)
+library(performance)
+# library(kableExtra)
+library(knitr)
+
+
+# Set the current working directory to the file path
+setwd(dirname(rstudioapi::getSourceEditorContext()$path)) 
+
+# Set default rounding to 4 decimal places
+options(digits = 4)
+```
+
+
+# Problem 7.4
+
+## Data Read-in (Grocery Retailer)
+
+- $Y$: Total labor hours
+- $X_1$: Number of cases shipped
+- $X_2$: The indirect costs of the total labor hours as a percentage
+- $X_3$: Holiday, coded 1 if the week has a holiday and 0 otherwise
+
+```{r}
+# Reading in required data
+grocery <- read.table("../Data Sets/Chapter  6 Data Sets/CH06PR09.txt")
+colnames(grocery) <- c("Y","X1", "X2", "X3")
+kable(head(grocery, 6), caption = "Grocery Retailer data set")
+
+```
+## Codes from class
+```{r}
+## Codes from class
+
+mod0 <- lm(Y~X1+X2+X3,data=grocery)
+kable(anova(mod0), caption = "Type I ANOVA Table")
+kable(Anova(mod0,type="III"), caption = "Type III ANOVA Table")
+
+# partial r-squared for relative contributions
+rsq.partial(objF=mod0, adj=TRUE,type='sse')
+
+# New model excluding X2 (due to its extremely low contribution)
+mod1 <- lm(Y~X1+X3,data=grocery)
+kable(anova(mod1), caption = "Type I ANOVA Table for model without X2")
+kable(Anova(mod1,type="III"), caption = "Type II ANOVA Table for model without X2")
+
+# check again the individual contributions
+rsq.partial(objF=mod1,adj=TRUE,type='sse')
+
+# Model selection criteria
+kable(as.data.frame(performance(mod0, metrics = "all")), caption = "Indices of model performance (mod0)")
+kable(as.data.frame(performance(mod1, metrics = "all")), caption = "Indices of model performance (mod1)")
+kable(as.data.frame(compare_performance(mod0, mod1, metrics = "all")), caption = "Model comparison table")
+```
+
+*Most of the metrics (AIC, BIC, Adjusted R-squared, and residual standard error (sigma)) indicate that the model without $X_2$ provides a slightly better fit.*
+
+
+
+## Questions from the Textbook
+
+### Part (a): ANOVA Table for Extra Sums of Squares
+```{r}
+full_mod <- lm(Y ~ X1 + X3 + X2, data = grocery)
+# summary(mod_full)
+
+# Obtain Type I sum of squares
+kable(anova(full_mod), caption = "ANOVA Table with extra sums of squares")
+```
+
+### Part (b): 
+```{r}
+kable(drop1(full_mod, ~ X2, test = "F"), caption = "Resulting Partial F-test ANOVA Table")
+```
+
+
+
+The F test statistic is `0.33` and the corresponding p-value is `0.57`. Since the p-value is greater than `0.05` we fail to reject $H_0$ and conclude that $X_2$ can be dropped from the regression model given that $X_1$ and $X_3$ are retained.
+
+### Part (c): Comparing extra sums of squares
+```{r}
+mod_X1X2 <- lm(Y ~ X1 + X2, data = grocery)
+mod_X2X1 <- lm(Y ~ X2 + X1, data = grocery)
+kable(anova(mod_X1X2), caption = "ANOVA Table: Extra sums of squares with X1 and with X2 given X1")
+# 136366 + 5726
+kable(anova(mod_X2X1), caption = "ANOVA Table: Extra sums of squares with X2 and with X1 given X2")
+# 11395 + 130697
+
+```
+
+From Tables 4 and 5 we have:
+$$SSR(X_1) + SSR(X_2|X_1) = 136366 + 5726 = 142092$$
+, and
+$$SSR(X_2) + SSR(X_1|X_2) =  11395 + 130697 = 142092.$$
+Hence,  $SSR(X_1) + SSR(X_2|X_1) = SSR(X_2) + SSR(X_1|X_2)$. This confirms the result we obtained in class where we expressed the two expressions in terms of SSTO and SSE.
+
+And yes, we expect this to always be the case.
+
+
+
+
+# Problem 8.8
+
+## Data Read-in (Commercial Properties)
+
+Below are the variables of interest and their representations:
+
+- $Y$: Rental Rates
+- $X_1$: Age of the property
+- $X_2$: Operating expenses and taxes
+- $X_3$: Vacancy rate
+- $X_4$: Total square footage
+
+
+```{r}
+# Reading in required data
+property <- read.table("../Data Sets/Chapter  6 Data Sets/CH06PR18.txt")
+colnames(property) <- c("Y","X1", "X2", "X3", "X4")
+kable(head(property, 6), caption = "Commercial Properties data set")
+```
+
+## Part (a)
+
+### Confirming the curvature relationship between $X_1$ and $Y$
+
+```{r}
+ggplot(property, aes(X1, Y)) +
+  geom_point() +
+  ggtitle("Relationship between X1 and Y") +
+  geom_smooth( se=F)
+```
+From the above plot, a curvature relationship looks obvious.
+
+### Fitting the required polynomial model
+```{r}
+mod0 <- lm(Y ~ X1, data = property)
+par(mfrow = c(2,2))
+plot(mod0)
+
+# Just follow the book instruction
+mod1 <- lm(Y ~ poly(X1, 2) + X2 + X4, data = property)
+coefs <- coef(mod1)
+# display estimates
+mod1 %>% tidy() %>%
+  kable(caption = "Parameter estimates")
+
+par(mfrow = c(2,2))
+plot(mod1)
+
+dev.off()
+# plot of Y observations against 
+plot(fitted(mod1), property$Y, xlab = "Fitted values", ylab = "Y observations", main = "Plot of Y against fitted values")
+
+```
+From the model outputs, the estimated regression function is 
+
+$$\hat{Y} = `r coefs[1]` `r coefs[2]` X_1 + `r coefs[3]` X^2_1 + `r coefs[4]` X_2 + `r round(coefs[5], 6)` X_4.$$
+
+Except for some potential outlying observations, the residual versus fitted plot provides evidence of a linear relationship and constancy of error variance. The error terms also appear to be fairly normally distributed. Overall, combining this evidence with the information provided by the plot of Y observations against fitted values, we can say with some level of certainty that the response function here appear to provide a good fit.
+
+## Part (b): Adjusted R squaered
+```{r}
+mod1 %>%
+  glance() %>%
+  select(r.squared, adj.r.squared, sigma, F.statistic = statistic, df, df.residual, p.value) %>%
+  kable(caption = "Model Performance metrics")
+```
+
+From the above table, adjusted R squared, $R^2_a = 0.5927$. This value tells us that approximately 59.3% of the total variation in the response Y is accounted for by the response function.
+
+## Part (c): Testing whether or not the $X^2_1$ can be dropped from the model.
+
+```{r}
+# obtaining test results
+mod_est <- mod1 %>% tidy() 
+kable(mod_est[3,], caption = "Results for hypothesis testing")
+```
+
+
+- Significance level, $\alpha = 0.05$.
+
+- Let $\beta_2$ denotes the true coefficient associated with $X^2_1$. Then the alternative hypotheses are: $H_0:\beta_2 = 0$ versus $H_a:\beta_2 \neq 0$.
+
+- The decision rule is to reject $H_0$ if p-value $\leq \alpha = 0.05$, and fail to reject otherwise.
+
+- From Table 16, the test statistic = `2.431` with corresponding p-value = `0.0174`. Here, we reject $H_0$ since the p-value is less than `0.05`, and conclude that the coefficient associated with $X^2_1$ is significant, and hence $X^2_1$ cannot be dropped.
+
+
+## Part (d)
+```{r}
+kable(predict(mod1, newdata = data.frame(X1 = 8, X2 = 16, X4 = 250000), interval = "confidence", level = 0.95), caption = "95% confidence interval for the mean rental rate")
+```
+
+The 95% confidence interval is as given in the above table, and it is interpreted to mean that we can be 95% confident that the mean rental rate lies somewhere between `16.46` and `17.94` when $X_1 = 8$, $X_2 = 16$, and $X_4 = 250,000$.
+
+
+
+

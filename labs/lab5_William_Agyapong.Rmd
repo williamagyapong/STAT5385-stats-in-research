@@ -1,0 +1,89 @@
+---
+title: 'STAT 5385: Lab `r params$lab_number`'
+author: "Willliam Ofosu Agyapong"
+date: "`r format(Sys.Date(), '%d/%m/%Y')`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    number_section: yes
+header-includes:
+  - \usepackage{fancyhdr}
+  - \pagestyle{fancy}
+  - \fancyhf{}
+  - \rhead{William O. Agyapong}
+  - \lhead{STAT 5385 - Lab `r params$lab_number`}
+  - \cfoot{\thepage}
+geometry: margin = 0.8in
+fontsize: 10pt
+params:
+  lab_number: 5
+---
+
+
+```{r setup, include=FALSE}
+# Set global options for output rendering
+knitr::opts_chunk$set(echo = T, warning = F, message = F, fig.align = "center")
+
+# Load required packages
+library(summarytools)
+library(dplyr)
+# library(kableExtra)
+library(knitr)
+
+
+# Set the current working directory to the file path
+setwd(dirname(rstudioapi::getSourceEditorContext()$path)) 
+
+# Set default rounding to 4 decimal places
+options(digits = 4)
+```
+
+
+```{r}
+toluca <- read.table("../Data Sets/Chapter  1 Data Sets/CH01TA01.txt")
+colnames(toluca) <- c("lot_size","Work_hours")
+kable(head(toluca, 10))
+
+senic <- read.table("../Data Sets/Appendix C Data Sets/APPENC01.txt")
+colnames(senic) <- c("ID","LOS","Age","Infec","Cul","Xray","beds","Med","region","avg","nurses","fands")
+kable(head(senic,10))
+
+toluca %>% dfSummary() %>% view()
+```
+
+<!-- ## Basic matrix calculations and examples -->
+## Regression matrix calculations
+
+```{r}
+
+j <- rep(1,nrow(toluca)) # create a vector of ones for the intercept
+X <- cbind(j,toluca$lot_size) # Create the design matrix
+y <- toluca$Work_hours;y # Extract response variable
+kable(t(X))# making sure everything went right
+
+# matrix computations
+(xpx <- t(X) %*%X)
+(xpy <- t(X) %*%y)
+(ypy <- t(y) %*%y)
+
+xpx^-1 # is this the correct inverse? This computes elementwise inverse; probably not what we want.
+solve(xpx) # computes the inverse of a matrix
+
+
+# Using the SENIC data
+names(senic) # just to remind ourselves of the variable names
+j <- rep(1, nrow(senic))
+X2 <- as.matrix(cbind(j, senic[, c(4,6,12)]))
+kable(head(X2, 10)) # looking at few rows to make sure everything went right
+y2 <- senic$LOS
+
+(xpx2 <- t(X2) %*%X2)
+(xpy2 <- t(X2) %*%y2)
+(ypy2 <- t(y2) %*%y2)
+
+solve(xpx2)
+```
+
+
+
+

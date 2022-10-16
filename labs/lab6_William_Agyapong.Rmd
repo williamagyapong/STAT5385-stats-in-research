@@ -1,0 +1,180 @@
+---
+title: 'STAT 5385: Lab `r params$lab_number`'
+author: "Willliam Ofosu Agyapong"
+date: "`r format(Sys.Date(), '%d/%m/%Y')`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    number_section: yes
+header-includes:
+  - \usepackage{fancyhdr}
+  - \pagestyle{fancy}
+  - \fancyhf{}
+  - \rhead{William O. Agyapong}
+  - \lhead{STAT 5385 - Lab `r params$lab_number`}
+  - \cfoot{\thepage}
+geometry: margin = 0.8in
+fontsize: 10pt
+params:
+  lab_number: 6
+---
+
+
+```{r setup, include=FALSE}
+# Set global options for output rendering
+knitr::opts_chunk$set(echo = T, warning = F, message = F, fig.align = "center")
+
+# Load required packages
+library(summarytools)
+library(dplyr)
+# library(kableExtra)
+library(knitr)
+
+
+# Set the current working directory to the file path
+setwd(dirname(rstudioapi::getSourceEditorContext()$path)) 
+
+# Set default rounding to 4 decimal places
+options(digits = 4)
+```
+
+## Data Read-in
+```{r}
+# Reading in required data
+toluca <- read.table("../Data Sets/Chapter  1 Data Sets/CH01TA01.txt")
+colnames(toluca) <- c("lot_size","Work_hours")
+kable(head(toluca, 6), caption = "toluca data set")
+
+senic <- read.table("../Data Sets/Appendix C Data Sets/APPENC01.txt")
+colnames(senic) <- c("ID","LOS","Age","Infec","Cul","Xray","beds","Med","region","avg","nurses","fands")
+kable(head(senic,6), caption = "The SENIC data set")
+
+# toluca %>% dfSummary() %>% view()
+```
+
+## Basic matrix calculations and examples
+
+```{r}
+
+library(matlib)
+library(MASS)
+
+#-------- Using the toluca data
+j <- rep(1,nrow(toluca)) # create a vector of ones for the intercept
+X <- cbind(j,toluca$lot_size) # Create the design matrix
+y <- toluca$Work_hours # Extract response variable
+kable(t(X))# making sure everything went right
+
+
+#--------- Using the SENIC data
+names(senic) # just to remind ourselves of the variable names
+j <- rep(1, nrow(senic))
+X2 <- as.matrix(cbind(j, senic[, c(4,6,12)]))
+kable(head(X2)) # looking at few rows to make sure everything went right
+y2 <- senic$LOS
+
+```
+
+
+## Regression matrix calculations
+```{r}
+# X'X
+xpx <- t(X)%*%X # not X*X
+#X'y
+xpy <- t(X)%*%y # not X*y
+#y'y
+ypy <- t(y)%*%y # not y*y
+#finding matrix inverse
+solve(xpx);inv(xpx)
+#beta vector
+(beta <- inv(xpx)%*%xpy)
+
+#now try for multivariate data
+xpx2 <- t(X2)%*%X2
+xpy2 <- t(X2)%*%y2
+ypy2 <- t(y2)%*%y2
+
+(beta2 <- inv(xpx2)%*%xpy2)
+```
+
+
+## Computations from Chapter 5 notes
+
+```{r}
+#first estimate a lm object
+mod0 <- lm(LOS~Infec+Xray+fands,data=senic)
+summary(mod0)
+anova(mod0)
+vcov(mod0) # variance covariance matrix for the beta coefficients
+
+#now the matrix calculations
+MSE <- 2.492
+MSE*inv(xpx2) # the same as using vcov(mod0)
+
+#some needed extra cals
+ypJy <- t(y2)%*%matrix(1,nrow(senic),nrow(senic))%*%y2
+hatmat <- X2%*%xpx2%*%t(X2) # dim: n by n
+resid <- y2-X2%*%beta2
+
+kable(head(cbind(resid, mod0$residuals)), col.names = c("By hand", "From lm model"),
+      caption = "Comparing residuals")
+
+
+#sums of squares
+(SSTO <- ypy2-1/nrow(senic)*ypJy)
+
+(SSE <- t(resid)%*%resid)
+
+(SSR <- t(beta2)%*%xpy2-1/nrow(senic)*ypJy)
+```
+
+## Now some multivariate modeling
+
+```{r}
+library(plot3D)
+
+# set the variables
+x1 <- senic$Infec
+x2 <- senic$Xray
+x3 <- senic$fands
+y <- senic$LOS
+
+# Compute the linear regression 
+fit <- lm(y ~ x1 + x2 + x3)
+
+# create a grid from the x and y values (min to max) and predict values for every point
+# this will become the regression plane
+grid.lines = 40
+x1.pred <- seq(min(x1), max(x1), length.out = grid.lines)
+x2.pred <- seq(min(x2), max(x2), length.out = grid.lines)
+x3.pred <- seq(min(x3), max(x3), length.out = grid.lines)
+x1x2 <- expand.grid( x = x1.pred, y = x2.pred)
+y.pred <- matrix(predict(fit, newdata = x1x2),nrow = grid.lines, ncol = grid.lines)
+x1x3 <- expand.grid( x = x1.pred, y = x3.pred)
+y.pred <- matrix(predict(fit, newdata = x1x3),nrow = grid.lines, ncol = grid.lines)
+x3x2 <- expand.grid( x = x3.pred, y = x2.pred)
+y.pred <- matrix(predict(fit, newdata = x3x2),nrow = grid.lines, ncol = grid.lines)
+# create the fitted points for droplines to the surface
+fitpoints <- predict(fit)
+
+# scatter plot with regression plane
+scatter3D(x1, x2, y, pch = 19, cex = 1,colvar = NULL, col="red", 
+          theta = 20, phi = 10, bty="b",
+          xlab = "Infection", ylab = "Xray", zlab = "LOS",  
+          surf = list(x = x1.pred, y = x2.pred, z = y.pred,  
+                      facets = TRUE, fit = fitpoints, col=ramp.col (col = c("dodgerblue3","seagreen2"), n =nrow(senic), alpha=0.9), border="black"), main = "Senic Study")
+
+
+scatter3D(x1, x3, y, pch = 19, cex = 1,colvar = NULL, col="red", 
+          theta = 20, phi = 10, bty="b",
+          xlab = "Infection", ylab = "Facilities and Services", zlab = "LOS",  surf = list(x = x1.pred, y = x3.pred, z = y.pred,facets = TRUE, fit = fitpoints, col=ramp.col (col = c("dodgerblue3","seagreen2"), n =nrow(senic), alpha=0.9), border="black"), main = "Senic Study")
+
+
+scatter3D(x3, x2, y, pch = 19, cex = 1,colvar = NULL, col="red", 
+          theta = 20, phi = 10, bty="b",
+          xlab = "Facilities and Services", ylab = "Xray", zlab = "LOS",  surf = list(x = x3.pred, y = x2.pred, z = y.pred,  facets = TRUE, fit = fitpoints, col=ramp.col (col = c("dodgerblue3","seagreen2"), n =nrow(senic), alpha=0.9), border="black"), main = "Senic Study")
+
+  
+```  
+
+

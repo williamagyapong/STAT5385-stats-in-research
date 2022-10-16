@@ -1,0 +1,913 @@
+---
+title: "Modeling Association between hospital capacity and community vulnerabilities"
+author: 
+  - "Willliam O. Agyapong"
+  - "Prince Appiah"
+  - "Eti Nyamekeh Baffoe"
+date: \center University of Texas, El Paso (UTEP), Department of Mathematical Sciences
+  \center
+output:
+  pdf_document:
+    toc: no
+    number_sections: yes
+    latex_engine: xelatex
+subtitle: Phase I Report
+header-includes:
+  - \usepackage{booktabs}
+  - \usepackage{float}
+  - \usepackage{setspace}
+  - \doublespacing
+  - \usepackage{bm}
+  - \usepackage{amsmath}
+  - \usepackage{amssymb}
+  - \usepackage{amsfonts}
+  - \usepackage{amsthm}
+  - \usepackage{fancyhdr}
+  - \pagestyle{fancy}
+  - \fancyhf{}
+  - \rhead{Eti Nyamekeh, Prince Appiah, William Agyapong}
+  - \lhead{Hospital Capacity - Phase I Report}
+  - \cfoot{\thepage}
+  - \usepackage{algorithm}
+  - \usepackage[noend]{algpseudocode}
+fig_caption: yes
+geometry: margin = 0.8in
+fontsize: 12pt
+link-citations: yes
+linkcolor: blue
+abstract: |
+ In this report, we analysed the relationship between hospital capacity and community vulnerabilities using a simple linear regression model. Overall, it was discovered that the predictor variable Low Income Area LIA County SAIPE Poverty Percentage and the two response variables inpatient_beds_7_day_avg and total_icu_beds_7_day_avg explained to some extent how hospital capacity is associated with community vulnerabilities as compared to the other predictor variables. Hospital capacity was also found to be influenced, to some degree, by whether a hospital is located in a hardest hit area. 
+---
+
+```{r setup, include=FALSE}
+# Set global options for output rendering
+knitr::opts_chunk$set(echo = F, eval= T, warning = F, message = F, fig.align = "center")
+
+# Set working directory to file path
+setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+
+# Set default rounding to 4 decimal places
+options(digits = 4)
+
+# Import self-defined custom functions
+source("functions.R")
+```
+
+
+```{r "Load libraries", echo=FALSE, eval=T, message=FALSE, warning=FALSE}
+# Load required packages
+library(summarytools)
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(broom)
+library(scales)
+library(RColorBrewer)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(lmtest) # for the BP test
+
+# Set default ggplot theme
+theme_set(theme_classic())
+```
+
+
+```{r "Load data", eval=T}
+covid <- read.csv("../covid.csv") # impact and hospitalization data
+vul <- read.csv("../vulnerability.csv") # community vulnerability data
+```
+
+
+```{r "Munge data", eval=T}
+# remove redundant X column
+covid <- covid[, -1] 
+
+# subset to Texas
+vul_TX <- vul %>% filter(STATE=="TEXAS")
+
+# merge by fips=hospital location
+merged_TX <- inner_join(covid, vul_TX, by = c("fips_code"="County.FIPS"))
+
+# take a look at summary stats
+# merged_TX %>% dfSummary() %>% view()
+
+# subset variables of interest and rename variables where necessary
+merged_TX_sub <- merged_TX %>%
+  select(inpatient_beds_7_day_avg, inpatient_beds_used_covid_7_day_avg, total_icu_beds_7_day_avg,
+         is_metro_micro, HHA_Score = HHA.Score,
+         LIA_CS_PP= Low.Income.Area..LIA..County.SAIPE....Poverty.Percentage., 
+         Tribal_Community = Tribal.Community..1.if.yes., 
+         Rural_Score = Rural...Score )
+
+# Declare variable types
+merged_TX_sub <- merged_TX_sub %>%
+  mutate(
+         # convert all character or integer variables to factors
+         across(where(is.character) | where(is.integer), as.factor)
+         )
+
+# save(merged_TX_sub, file = "merged_TX_sub.RData")
+
+# Get counties for reporting
+# counties <- merged_TX %>% 
+#   select(LOCATION) %>%
+#   mutate(county = unlist(str_split(LOCATION, ","))) %>%
+#   filter(!duplicated(county))
+# 
+# counties <- map(merged_TX$LOCATION, function(i) {
+#   str_split(merged_TX$LOCATION, ",")[[i]][2]
+# })
+```
+
+
+# Introduction
+This is the first of a study that seeks to understand the association between community vulnerabilities and hospital beds capacity. 
+
+## Background/rationale
+<!-- Explain the scientific background and rationale for the investigation being reported -->
+
+Undoubtedly, the COVID-19 pandemic has affected almost every facet of life worldwide.  However, areas such as hospital care units and industries have been tremendously affected. The USA was not left out, many hospitals were filled out leading to a serious shortage of hospital beds, especially for intensive care units (ICUs). As the pandemic rises day by day, hospitals have been overburdened or occupied with victims of the pandemic. In such situations, hospitals in vulnerable communities may be more prone to exceeding hospital beds capacity. For instance, Tsai et al (2022) studied the association of community level social vulnerability with US acute care hospital intensive care unit capacity during this period of Covid-19 pandemic and found that 63% of hospitals reached critical ICU capacity for at least two weeks during the study period, while the surge of COVID-19 cases appeared to be crowding out non-COVID-19-related intensive care needs, showing how the association between social vulnerability and critical ICU capacity highlights underlying structural inequities in health care access. Again, according to report by the Office of Inspector General of the U.S. Department of Health and Human Services, hospitals reported that the covid-19 pandemic has significantly strained health care delivery.
+
+Therefore, there is the need to investigate or understand the kind of relationship that exists between hospital beds capacity and community vulnerabilities. This has the potential of providing great insights to decision makers to take action to prevent strained ICU capacity from compounding COVID-19 inequities. In this report, we conduct a simple linear regression analysis to investigate whether hospital beds capacity is associated with community vulnerabilities using data obtained from the U.S. Department of Health and Human Services Protect database.
+
+<!-- the world continue to grapple with -->
+
+## Objectives	
+<!-- State specific objectives, including any prespecified hypotheses -->
+
+The main objective of this report is to answer the following research question.
+
+> **How is hospital capacity associated with community vulnerabilities?**
+
+For each of the outcome variables presented in Table 1, our goal is to identify the appropriate community vulnerability measure that is able to explain much of the variability to help us achieve the main objective of the study. This leads us to the specific objectives described below:
+
+Is there a linear relationship between a particular hospital capacity measure and any of the community vulnerability measures? If so, which of the community vulnerability measure provides the largest reduction in the variability of the given outcome (hospital capacity measure)?
+
+Our initial hypothesis is that the vulnerability measure, low income area county poverty percentage, is likely to have the most significant effect on the dependent variables measuring hospital capacity.  
+
+## Setting
+<!-- Describe the setting, locations, and relevant dates, including periods of recruitment, exposure, follow-up, and data collection -->
+
+Data for this report span the period from July 15, 2020 to `January 7, 2022` and were collected from selected hospitals in the US as described in the participants section. Part of the population were first recruited on June 1, 2020, with the remaining joining on July 15 the same year. 
+
+## Participants
+<!-- Describe participants here -->
+Our study participants consists of `r length(unique(merged_TX$hospital_name))` hospital facilities spread across various counties in the State of Texas selected from a hospital population that includes all hospitals registered with Centers for Medicare & Medicaid Services (CMS) as of June 1, 2020 and non-CMS hospitals that have reported since July 15, 2020. It does not include psychiatric, rehabilitation, Indian Health Service (IHS) facilities, U.S. Department of Veterans Affairs (VA) facilities, Defense Health Agency (DHA) facilities, and religious non-medical facilities. Our study, however, focused on a subsection comprising hospitals in the state of Texas.  
+
+## Variables
+<!-- Clearly define all outcomes, exposures, predictors, potential confounders, and effect modifiers. Give diagnostic criteria, if applicable --> 
+The study focuses on seven variables obtained from a facility-level hospitalization data as well as a community-level vulnerability data. The following table provides information about these seven variables used in the study. As indicated by the role column, there are three dependent (response) variables which are measures of hospital capacity and constitute the seven-day averages of the reports provided for a given facility for that element during that collection week, while the remaining four variables, measuring community vulnerability, are the independent (predictor) variables. 
+
+```{r "variable description", eval=T}
+col_names <- c("Variable Name", "Description", "Type of Measure", "Data Type", "Role")
+data.frame(rbind(
+  c("inpatient_beds_7_day_avg" ,"Average number of total number of staffed inpatient beds in your hospital including all overflow, observation, and active surge/expansion beds used for inpatients (including all ICU beds) reported in the 7-day period.", "Hospital bed capacity", "Numeric/continuous", "Outcome/ Response"),
+  c("inpatient_beds_used_covid_7_day_avg", "Average of reported patients currently hospitalized in an inpatient bed who have suspected or confirmed COVID-19 reported during the 7-day period.", "Hospital bed capacity", "Numeric/continuous", "Outcome/ Response"),
+  c("total_icu_beds_7_day_avg", "Average number of total number of staffed inpatient ICU beds reported in the 7-day period.", "Hospital bed capacity", "Numeric/continuous", "Outcome/ Response"),
+  c("is_metro_micro", "This is based on whether the facility serves a Metropolitan or Micropolitan area. True if yes, and false if no.", "Community vulnerability", "Binary/categorical", "Predictor") ,
+  c("HHA_Score", "Hardest Hit Area Score", "Community vulnerability","Integer/Categorical", "Predictor"),
+  c("LIA_CS_PP", "Low Income Area (LIA) County SAIPE - (Poverty Percentage)", "Community vulnerability", "Numeric/continuous", "Predictor"),
+  c("Rural_Score", "An indicator of whether the facility is at a rural location or not", "Community vulnerability", "Integer/Categorical", "Predictor")
+)) %>%
+    kable(format="latex", col.names = col_names, linesep="",
+          caption = "Variables of interest") %>%
+  column_spec(2, width = "10em") %>%
+  column_spec(3, width = "6em") %>%
+  column_spec(5, width = "5em") %>%
+       kable_styling(font_size = 10,  latex_options = c("HOLD_position"))
+```
+
+
+## Data sources/measurement
+
+<!-- For each variable of interest, give sources of data and details of methods of assessment (measurement). Describe comparability of assessment methods if there is more than one group -->
+
+The variables listed in the previous section come from two sources; a facility-level hospitalization data and community vulnerability data, both of which were accessed from the US Department of Health and Human Services Protect database for **COVID-19 Reported Patient Impact and Hospital Capacity by Facility** and **COVID-19 Community Vulnerability Crosswalk - Crosswalk by Census Tract**, respectively. Due to the large size of the data, only 5010 observations from the hospital capacity data were used. We also limited ourselves to only the averages derived based on the number of values collected for a given hospital in a collection week (Friday to Thursday). These observations were then merged with the community-level vulnerability data having **72836** data points. We eventually restricted the scope of the study to the State of Texas which left us with a final data set consisting of **82915** observations.
+
+According to the data sources, FCC's scoring procedure was used to weigh the community vulnerability measures including Hardest Hit Area (HHA), Low Income Area, Tribal Community, and Rural Community. We chose the scored variables because they provide an evaluation of the most vulnerable communities in our population. 
+
+## Bias
+<!-- Describe any efforts to address potential sources of bias -->
+- One source of bias could come from the cases where `Low Income Area County SAIPE Peverty Percentage`, the only continuous predictor variable, emerged as the best independent or predictor variable in our initial modeling for narrowing down to one model per each dependent variable. This is because the overall relationship observed could be different when the sub-populations are considered. To address this potential bias, we considered running other analyses where one of the significant categorical variable was used to split the data into subgroups and refitted the models on the individual subgroups.
+
+- We also believe the study data was not representative of the study population since we simply took the first 5010 observations from the hospital capacity dataset. This source of bias can be addressed by taking a good random sample from the large hospital capacity data from the original source, but this was clearly beyond our control.
+
+- Another potential source of bias is the high level of class imbalance seen in the distribution of the categorical predictors. Some levels of all four community vulnerability measures, `HHA_Score`, `Rural Score`, `Tribal Community` and `is_metro_micro`, are disproportionately represented. We defer the treatment of this bias to the second stage of the study.
+
+## Study size
+<!-- Explain how the study size was arrived at -->
+There were $761,663$ observations in the original merged data provided for the analysis. Limiting the study to the State of Texas brought the number of observations down to $82,915$.  We then removed missing data arising from data suppression that was applied to hospital capacity average measures less than four (4) by the maintainers of the data and non-reporting by some of the facilities. Please see the Missing Data section for what we considered to be non-reported values. In the end, the data used for the analysis had $45,991$ observations making up our study size.
+
+
+## Statistical methods
+<!-- Describe all statistical methods, including those used to control for confounding   -->
+### Regression model
+
+The statistical method used here is simple linear regression. Under this method, we have the general model $Y_i = \beta_1X_i + \beta_0 + \epsilon_i$, $i = 1, \cdots, n$, where $n$ is the sample size and $\epsilon_i$ is normally distributed with mean zero and variance $\delta^2$. Under this model, we check the following assumptions:
+
+
+1. Constancy of the error variance. This was checked by using Breusch Pagan test
+
+2. Normality of the error variance. This was checked using the normal probability plot and the Normal QQ plot.
+
+3. Linearity of the model. This was checked using the scatter plot and the residual versus fitted plot
+
+4. Normality of the residuals using coefficient of correlation between the ordered residuals and their expected values under normality.
+
+5. Check the significance of the slope and intercept using confidence intervals of the slope and the intercept.
+
+### Model Assessement
+
+We diagnosed the appropriateness of our models using diagnostic plots such residual versus fitted plots, normality plots as well as numerical tests including `Bruesch-Pagan` test for non-constancy of error variance, and the `coefficient of correlation` test for normality. This was done largely to ensure that the various assumptions required for the simple linear regression model list above were reasonably satisfied.  We therefore relied on the these diagnostics to to select our best models.
+
+Other performance metrics such the coefficient of determination ($R^2$) and the mean squared error (MSE) were also utilized.
+
+- The R-squared ( coefficient of determination)  is used to determine the amount of  variability in the dependent/response that is accounted for by the regression model. The strength and weakness of the fitted When R-square is between 0 to 0.5 we say there is a weak fitted linear model, when it is between 0.5 to 0.75, we say that the regression model is moderate and when it is in-between 0.75 to 1, we say the model is strong. Because the r-square is not enough evidence to determine whether a model is well fitted, we did not base our analysis sorely on the R-squaered.
+
+
+# Results
+ In this section, we present relevant results from our exploratary data analysis and regression modeling
+ procedures.
+ 
+## Descriptive data	
+<!-- Give characteristics of study participants available, information on exposures and potential confounders, and any missing data -->
+
+We provide both numerical summaries and graphs to enhance our understanding of the underlying data for the study.
+
+### Characteristics of study participants
+
+As already identified in the introduction, our study participants consist of all hospitals in Texas registered with Centers for Medicare & Medicaid Services (CMS) as of June 1, 2020 and non-CMS hospitals that have reported since July 15, 2020. The graphs below provides information about how these participants are distributed in terms of hospital subtypes and cities.
+
+```{r}
+participants_info <- merged_TX %>% 
+  select(hospital_name, hospital_subtype, city, address) %>%
+  mutate(across(everything(), factor)) # c(hospital_name, hospital_subtype, city)
+
+# summary(participants_info)
+
+mybarplot(hospital_subtype, title = "Representation of hospital sub types", dat = participants_info)
+```
+Here, we also see unequal representation with critical access hospitals being low as expected.
+
+
+```{r}
+
+city_sum <- participants_info %>%
+  group_by(city) %>%
+  summarise(n = n()) %>%
+  mutate(is_highest = as.factor(ifelse(n == max(n), 1, 0))) %>%
+  top_n(10, n)
+
+ggplot(city_sum, aes(x=reorder(city, -n), y=n)) +
+  geom_bar(aes(fill=is_highest),stat = "identity") +
+  scale_fill_manual(values=c("dodgerblue","tomato")) +
+  geom_text(aes(label= n, size=0.4), hjust= 0.5, vjust=1, color="lightgray") +
+  theme_classic() +
+  labs(x="", y="Number of hospitals",
+       title="Top 10 out of 254 cities  where the hospitals are located ") +
+  theme(legend.position = "none",
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+
+
+```
+
+Most of the participating hospitals come from Houston, followed by Dallas with the city of El Paso coming last on the list. This may not be a fair representation since the populations at these cities differ greatly from each other. Hence, the population of these cities needs to be taken into account when interpreting the figures.
+
+### Investigating missing data
+
+
+```{r "EDA missing values", eval=T}
+# install.packages("naniar")
+# install.packages("UpSetR")
+library(naniar)
+library(UpSetR)
+
+# explore the patterns
+# gg_miss_upset(merged_TX_sub) # shows interractions
+
+# explore missingness in variables with gg_miss_var
+miss_var_summary(merged_TX_sub) %>% 
+  kable(format="latex",booktabs = T, caption = "Missing values in the merged data set") %>%
+      kable_styling(font_size = 10,  latex_options = c("HOLD_position"))
+
+# gg_miss_var(merged_TX_sub) + ylab("Number of missing values")
+
+dependent_vars <- covid %>%
+  select(inpatient_beds_used_covid_7_day_avg,total_icu_beds_7_day_avg,inpatient_beds_7_day_avg)
+
+miss_var_summary(dependent_vars) %>% 
+  kable(format="latex",booktabs = T,caption = "Missing values in dependent variables from the covid data before merge") %>%
+      kable_styling(font_size = 10,  latex_options = c("HOLD_position"))
+
+# gg_miss_var(dependent_vars) + ylab("Number of missing values")
+```
+
+We see from **Table 2**  that only the three independent variables have missing values. It turns out that most of the missing values were created by the data merge between the hospital capacity data and the community vulnerability data as revealed by **Table 3**. We take a very simplistic approach of **deleting the missing values** as a means of treatment since most of the missing values are artificial. Again, it is important to note that the actual missing values denote averages that were less than 4.
+
+
+#### Non-reported values in dependent variables
+
+We also observed that the hospital capacity measures chosen for our dependent variables had zeros (0) in them. This was quite surprising at first because we did not expect to see zeros in these variables when the maintainers of the data ***suppressed all averages less than four (4) and replaced them with `-999,999`*** which were then marked as missing values in our version of the data. After digging deeper we realized that these zeros could represent non-reported values by some of the facilities since our data source stated that "No statistical analysis is applied to impute non-response". By this reasoning and the fact that there was no information to determine the reasons leading to non-responses, we decided to represent zeros (0) in our dependent variables as missing values and treated them in the same way as described above.
+
+
+### Distribution of dependent variables
+```{r "distributions of dependent", eval=T}
+library(patchwork)
+
+# Histogram of the dependent variables
+my_histogram <- function(y_var, dat = NULL){
+  ggplot(dat, aes({{y_var}}, fill={{y_var}})) +
+  geom_histogram(fill="green", color="red") +
+  ylab("Frequency") +
+  theme_classic()
+}
+a <- my_histogram(inpatient_beds_used_covid_7_day_avg, dat = merged_TX_sub)
+b <- my_histogram(inpatient_beds_7_day_avg, dat = merged_TX_sub)
+c <- my_histogram(total_icu_beds_7_day_avg, dat = merged_TX_sub)
+
+a + b + c
+
+```
+
+The distributions of all three dependent variables are identical and heavily right skewed. There also appears to be outliers. The skewness suggests that one of two transformations, logarithm, and a power transformation (square root or cube root), might be appropriate. We learn from these distributions that similar results may be obtained from modeling the variables.
+
+### Distribution of independent variables
+```{r "distributions of independent", eval=T}
+par(mfrow = c(2,2))
+ggplot(merged_TX_sub, aes((LIA_CS_PP))) +
+  geom_freqpoly(color = "blue") # the only continuous predictor variable
+
+d <- mybarplot(Rural_Score, dat = merged_TX_sub)
+
+e <- mybarplot(Tribal_Community, dat = merged_TX_sub)
+
+
+f <- mybarplot(HHA_Score, dat = merged_TX_sub)
+
+g <- mybarplot(is_metro_micro, dat = merged_TX_sub)
+
+(d + e) / (f + g) # uses the patchwork package syntax to display plots side by side
+```
+
+The distribution of the continuous independent/predictor variable, `Low Income Area County SAIPE Poverty Percentage` (LIA_CS_PP), looks multimodal and right skewed with some possible outliers at the extreme ends. This measurement appears to have come from two underlying sub-populations as portrayed by the two high peaks.
+
+Turning our focus to the categorical independent variables, we observe that some of the levels of each variable are extremely disproportionately represented. This is a clear sign of class imbalance which would have to be dealt with appropriately in the modeling phase in order to avoid any potential bias.
+
+
+### Effect of independent variables on the dependent variables
+
+```{r "scatterplots", eval=T}
+((ggplot(merged_TX_sub, aes(LIA_CS_PP, inpatient_beds_7_day_avg, color = HHA_Score)) +
+  geom_point() +
+   theme(legend.position = "none")) +
+  (ggplot(merged_TX_sub, aes(LIA_CS_PP, inpatient_beds_7_day_avg, color = Rural_Score)) +
+  geom_point() + ylab("") + scale_color_manual(values = c("gold", "cyan")) + 
+   theme(legend.position = "none",
+         axis.text.y = element_blank()))) /
+((ggplot(merged_TX_sub, aes(LIA_CS_PP, total_icu_beds_7_day_avg, color = HHA_Score)) +
+  geom_point() +
+   theme(legend.position = "bottom")) +
+  (ggplot(merged_TX_sub, aes(LIA_CS_PP, total_icu_beds_7_day_avg, color = Rural_Score)) +
+  geom_point() + ylab("") + scale_color_manual(values = c("gold", "cyan")) + 
+   theme(legend.position = "bottom",
+         axis.text.y = element_blank())))
+```
+
+The above graphs depict the relationship between the only continuous independent variable, `Low Income Area County SAIPE Poverty Percentage` (LIA_CS_PP), and two dependent variables, `inpatient beds 7 day average` and `total ICU beds 7 day average`, split into subgroups defined by `Hardest Hit Area Score` and `rural score`. From these plots we see that `LIA_CS_PP` does not appear to have any interesting relationship with the two dependent variables, and the subgroups are also not well separated. Similar observations were made with the other variables so we decided not present them here.
+
+We also explored how each dependent variable is distributed across the levels of each one of the categorical independent variables which can be found in **Appendix C**. In general, the plots suggest that the categorical variables have some effect on all the dependent variables. However, some of them appear to have relatively stronger effect than others. 
+
+## Modeling 
+
+```{r "Missing-Trt", eval=T}
+# Treating missing values
+merged_TX_sub[,1:3][merged_TX_sub[,1:3]==0] <- NA # Count zeros as missing values.
+merged_TX_sub<- merged_TX_sub %>%na.omit() # Remove NAs
+```
+
+We began our modeling by first running multiple simple linear regression models involving each dependent variable and all the independent variables as a means of obtaining a single best independent variable that could be used for further analysis. As revealed from the EDA, the distribution of all the dependent variables are heavily skewed to the right. This initial observation suggests that a transformation of some kind of the dependent variables would be necessary. Therefore, to give each independent variable a fair chance, we fitted four different models involving no transformation, log transformation, square and cube root transformations of the dependent variables in our initial attempt to selecting the "best" model without any rigorous analyses. At this stage, we simply compared models by looking at overall model performance in terms of the proportion of variability explained ($R^2$) , the mean squared error (MSE), and any evidence of a linear relationship from the p-values corresponding to the F-statistics. Tables of results showing how each independent variable performed can be found in **Appendix A**. Reported below is a table of each dependent variable with the associated independent variable selected.
+
+The next subsections present detailed analyses conducted on the initial best model for each of the three dependent variables.
+
+
+### Further analysis on the best model for `inpatient_beds_7_day_avg`
+
+**Diagnostic plots for model with untrasfromed variables**
+```{r eval=T}
+mod_IB_LIA <- lm(inpatient_beds_7_day_avg~LIA_CS_PP, data =merged_TX_sub )
+mod_IB_LIA1 <- lm(log(inpatient_beds_7_day_avg)~LIA_CS_PP, data =merged_TX_sub)
+
+
+## Normal probability plot of the residuals 
+
+par(mfrow = c(1,2))
+plot(mod_IB_LIA, 1, main = "Residual plot for the  untransformed model")
+my_NPP(mod_IB_LIA)
+
+```
+
+**Diagnostic plots for model with log transformation of the dependent variable**
+```{r}
+
+par(mfrow = c(1,2))
+plot(mod_IB_LIA1, 1, main = "Residual plot for ")
+my_NPP(mod_IB_LIA1)
+
+# mod_result1(mod_IB_LIA)
+```
+
+The following two tables provide results for the Bruesche-Pagan test for nonconstant variance for the untransformed and the log transformed models, respectively.
+ 
+```{r }
+BP_tbl(mod_IB_LIA)
+
+BP_tbl(mod_IB_LIA1)
+```
+
+We first checked the model on the untransformed data and realized that most of the underlying simple linear regression were violated. Also, the predictor variable LIA_CS_PP performed well with the untransformed response variable in terms of the residual plot, normal probability plot, scatter plot, lowess curve and regression confidence bands. Looking at the histogram of the response variable it was right skewed so we performed log transformation.
+We observe that the residual plot for the log transform does not show any pattern of nonlinearity and the normal QQ plot or the normal probability plot is better than the plots for the untransformed data, eventhough its not normal. The residual plot for the  untansform has an "n" shape. We also see that the scatter plot for the log transform depicts linearity as compared with the untransform.
+
+We obtained the coefficient of correlation between the ordered residuals and their expected values under normality- and we had the critical value *0.987* less than *0.995* (the correlation coefficient) for the log transform with significance level of 0.05. Thus, we conclude that at *5%* significance level, the residuals are normality distributed. The untransformed model failed the test for the coefficient of correlation between the ordered residuals and their expected values under normality.By Breusch-Pagan test the error variance is not constant. 
+Hence, based on these result, we see that the log transform appeared to be better than the untransformed. In view of that, we proceeded to do a simultaneous log transform for both the predictor variable (LIA_CS_PP) and the response variable (inpatient_beds_7_day_avg)
+
+
+ **Simultaneous log transform**
+```{r eval=T}
+mod_IB_LIA12L <- lm(log(inpatient_beds_7_day_avg)~log(LIA_CS_PP), data =merged_TX_sub)
+
+par(mfrow = c(1, 2))
+plot(mod_IB_LIA12L, which = 1)
+## Normal Probability Plot
+my_NPP(mod_IB_LIA12L)
+
+## Coefficient of correlation between the ordered residuals and their expected values under  ##normality
+# my_CC(mod_IB_LIA12L, merged_TX_sub)
+
+# Scatter Plot
+# plot( log(merged_TX_sub$inpatient_beds_7_day_avg) ~ log(merged_TX_sub$LIA_CS_PP), merged_TX_sub, xlab = "log_LIA_CS_PP", ylab = "log_inpatient_beds_7_day_avg")
+# title("Scatter Plot Of Log Transformation")
+
+# Lowess Curve and Regression Confidence Band
+# my_LCCBS(log(merged_TX_sub$LIA_CS_PP),log(merged_TX_sub$inpatient_beds_7_day_avg), merged_TX_sub,mod_IB_LIA12L)
+
+# BP_tbl(mod_IB_LIA12L)
+```
+
+After the simultaneous log transform, we observed that the $R^2=0.0268039$ has increased as compared to the $R^2=0.016626$  of the log transform of only the response variable. There has been an improvement in the residual plot. Even though the error variance is not constant, it is better than the previous one. There is a great improvement in normal probability plot as compared to only the log transform just on the response variable. The residual plot also do not depict non-linearity pattern. We obtained the coefficient of correlation between the ordered residuals and their expected values under normality - and we had the critical value *0.987* less than *0.995* (the correlation coefficient) for the log transform with significance level of 0.05. Thus, we conclude that at *5%* significance level, the residuals are normality distributed.
+
+<!-- After the simultaneous log transform, we observed that the *R^2=0.0268039* has increased as compared to the *R^2=0.016626* of the log transform of only the response variable. There has been an improvement in the residual plot.Even though the error variance is not constant, it is better than the previous one. There is a great improvement in the normal QQ and normal probability plots as compared to only the log transform of only the response variable. The scatter plot also do not depict nonlinearity pattern. There seems to be linearity. We obtained the coefficient of correlation between the ordered residuals and their expected values under normality- and we had the critical value *0.987* less than *0.995* (the correlation coefficient) for the log transform with significance level of 0.05. Thus, we conclude that at *5%* significance level, the residuals are normality distributed. This confirms the previous one we had with only the log transform. Finally, there has been a great improvement in the lowess curve and the regression confidence band. Larger percentage of the lowess curve lies in the confidence band. -->
+
+**Reporting the final model:** 
+
+```{r eval=T}
+# parameter estimates 
+mdl_result(mod_IB_LIA12L)
+
+# Overall model metrics
+mdl_result(mod_IB_LIA12L, type = "overall")
+# summary(mod_IB_LIA12L)
+```
+
+$$ \hat{log(Y)} = 6.5925 + 0.5464X$$ 
+where $Y$ is inpatient_beds_7_day_avg and $X$ is `Low Income Area County SAIPE Poverty Percentage (LIA_CS_PP)` . The model signifies that for every unit change in the the log of `LIA_CS_PP`, the mean of inpatient_beds_7_day_avg increases by **0.5464** in log units.
+
+### Further analysis on our best model for the `inpatient_beds_used_covid_7_day_avg`
+
+**Diagnostic plots for model with untrasfromed variables**
+```{r eval=T}
+
+mod_IB_covid_HHA <- lm(inpatient_beds_used_covid_7_day_avg~HHA_Score, data =merged_TX_sub )
+
+par(mfrow = c(1,2))
+plot(mod_IB_covid_HHA, 1)
+my_NPP(mod_IB_covid_HHA)
+
+```
+
+**Diagnostic plots for model with log transform of the dependent variable**
+```{r}
+mod_IB_covid_HHA_log <- lm(log(inpatient_beds_used_covid_7_day_avg)~HHA_Score, data =merged_TX_sub)
+par(mfrow = c(1,2))
+plot(mod_IB_covid_HHA_log, 1)
+my_NPP(mod_IB_covid_HHA_log)
+
+
+```
+
+The following two tables provide results for the Bruesche-Pagan test for nonconstant variance for the untransformed and the log transformed models, respectively.
+ 
+```{r }
+BP_tbl(mod_IB_covid_HHA)
+
+BP_tbl(mod_IB_covid_HHA_log)
+```
+
+
+The residual versus fitted plot suggests increasing error variance, which is also supported by the Bruesch-Pagan test as this numerical test indicated a violation of the constant variance assumption. On the other hand, the normality illustrates that the distribution of the error terms does not depart substantially form normality. Notwithstanding, we conclude with this as our best model since all other forms of transformations could not remedy the violation noticed.
+
+<!--  **Remarks** -->
+<!-- The level 15 for HHA_score had the best R squared among other factors. However, the residual plot reveal large nonconstancy of the error variance and doesnot depict linearity among all the models for the different levels of the HHA_score. Also, the normal QQ or normal probability plot deviates higher from normality. -->
+<!-- So, we see that these interactions do not give any meaningful results. -->
+
+**Reporting results for final model:** 
+
+```{r eval=T}
+# parameter estimates 
+mdl_result(mod_IB_covid_HHA_log)
+
+# Overall model metrics
+mdl_result(mod_IB_covid_HHA_log, type = "overall")
+
+# summary(mod_IB_covid_HHA_log)
+```
+
+From the table of results, the estimated regression model is given as
+
+$$ \hat{\text{Y}} = 4.2242 - 0.5546X_1 -0.7447X_2$$
+where $Y$ is `inpatient_beds_used_covid_7_day_avg`, $X_1$ is 1 for level 7 and 0 otherwise, and $X_2$ is 1 for level 15 and 0 otherwise.
+
+### Further analysis on our best model for the `total_icu_beds_7_day_avg`
+
+**Diagnostic plots for model with untrasfromed variables**
+```{r eval=T}
+mod_TICU <- lm(total_icu_beds_7_day_avg~LIA_CS_PP, data =merged_TX_sub )
+##Diagnostic plot
+par(mfrow = c(1,2))
+plot(mod_TICU, which = 1)
+my_NPP(mod_TICU)
+```
+
+**Diagnostic plots for model with log transform of the response variable**
+```{r}
+mod_TICU1 <- lm(log(total_icu_beds_7_day_avg)~LIA_CS_PP, data =merged_TX_sub )
+
+# residual and normality plots for the log transformed model
+par(mfrow = c(1,2))
+plot(mod_TICU1, which = 1)
+my_NPP(mod_TICU1)
+
+```
+
+The results here is very similar to the ones obtained for the `inpatient_used_bed_7_day_avg` versus `LIA_CS_PP` models above. The same observations can be made concerning the normality of the errors as well as the residual versus fitted plot. Also, the coefficient of correlation for normality gave the same evidence. Once again, we still have some violation of the constancy of the error variance assumption with evidence from the Breusch-Pagan test so we proceed to perform a simultaneous log transform.
+
+**Diagnostic plots for simultaneous log transformation**
+```{r eval=T}
+## Doing a simultaneous transformation
+mod_TICUS <- lm(log(total_icu_beds_7_day_avg)~log(LIA_CS_PP), data =merged_TX_sub)
+
+# mod_result1(mod_TICUS)
+par(mfrow = c(1,2))
+plot(mod_TICUS, which = 1:2)
+
+my_NPP(mod_TICUS)
+
+## Coefficient of correlation between the ordered residuals and their expected values under ## normality
+my_CC(mod_TICUS, merged_TX_sub)
+
+# Scatter Plot
+# plot( log(merged_TX_sub$total_icu_beds_7_day_avg) ~ log(merged_TX_sub$LIA_CS_PP), merged_TX_sub, xlab = "log_LIA_CS_PP", ylab = "log_total_icu_beds_7_day_avg")
+# title("Scatter Plot Of Log Transformation")
+# 
+# ## Lowess and Confidence Band
+# my_LCCBS(log(merged_TX_sub$LIA_CS_PP),log(merged_TX_sub$total_icu_beds_7_day_avg), merged_TX_sub,mod_TICUS)
+
+```
+
+
+We observed after the simultaneous log transform that the $R^2=0.0269693$ has increased as compared to the $R^2=0.0172882$ of the log transform of only the response variable. There has been an improvement in the residual plot.Even though the error variance is not constant, it is better than the previous one. There is a great improvement in normal probability plots as compared to only the log transform of only the response variable. The scatter plot also do not depict nonlinearity pattern. There seems to be linearity. We obtained the coefficient of correlation between the ordered residuals and their expected values under normality- and we had the critical value *0.987* less than *0.991* (the correlation coefficient) for the log transform with significance level of 0.05. Thus, we conclude that at *5%* significance level, the residuals are normality distributed.
+
+We conclude with the following with the model involving the simultaneous log transformation as our best model for `total_icu_beds_7_day_avg` as reported below. 
+
+<!-- This is not surprising since the all the dependents variables  were found to have the same distribution. -->
+
+**Final Model** 
+
+```{r eval=T}
+# parameter estimates 
+mdl_result(mod_TICUS)
+
+# Overall model metrics
+mdl_result(mod_TICUS, type = "overall")
+# summary(mod_TICUS)
+```
+$$ \hat{log(Y)} = 4.6652 + 0.5841X$$ 
+where $Y$ is `total_icu_beds_7_day_avg` and $X$ is `Low Income Area County SAIPE Poverty Percentage (LIA_CS_PP)` . The model signifies that for every unit change in the the log of `LIA_CS_PP`, the mean of `total_icu_beds_7_day_avg` increases by **0.5841** in log units.
+
+
+## Other Analysis (Interactions)
+
+We sought to identify any interactions with the `Hardest Hit Area Score`  on the models involving the depend variables and the only continuous independent varialbe `Low Income Area County SAIPE Poverty Percentage`. Here, `Hardest Hit Area Score` was used to create subpopulations. However, it turned out the results were not meaningful as most of the underlying assumptions of simple linear regression were greatly violated.
+
+
+**Remarks**
+
+The level 15 for HHA_score had the best R squared among other factors. However, the residual plot reveal large nonconstancy of the error variance and doesnot depict linearity among all the models for the different levels of the HHA_score. Also, the normal QQ or normal probability plot deviates higher from normality.
+So, we see that these interactions do not give any meaningful results.
+
+
+
+```{r}
+# Create a new dataset for convenient modeling.
+nested_HHAS <- merged_TX_sub %>%
+  # Select variables of interest
+  select(inpatient_beds_7_day_avg, LIA_CS_PP, HHA_Score) %>%
+  nest(-HHA_Score) 
+# Fit a linear regression model between LOS and infection for each region.
+models_HHAS <- nested_HHAS %>%
+  mutate(model = map(data, ~ lm(inpatient_beds_7_day_avg ~ LIA_CS_PP, data = .)))
+
+# Extracting model result at the parameter level
+ models_HHAS %>% 
+  mutate(result=map(model, tidy, conf.int= TRUE, conf.level=0.95)) %>% 
+  unnest(result) %>%
+  select(-c(data, model)) %>%
+   kable()
+ 
+ 
+# Extracting overall model results 
+ models_HHAS %>% 
+  mutate(result=map(model, glance)) %>% 
+  unnest(result) %>%
+  select(HHA_Score, r.squared, adj.r.squared, sigma, F.statistic=statistic, p.value) %>% 
+   mutate(MSE=sigma^2, .keep="unused") %>%
+   kable() 
+
+ 
+# Diagnostic plot
+#map(models_HHAS$model,plot, which=1:2)
+
+# ---HHAS level 0
+ plot(models_HHAS$model[[1]], which=1:2)
+
+# ---HHAS level 15
+ plot(models_HHAS$model[[2]], which=1:2)
+ 
+# ---HHAS level 7
+plot(models_HHAS$model[[3]], which=1:2)
+
+```
+
+**Remarks**
+The level 7 for HHA_score had the best R squared among other factors. However, the residual plot reveal large nonconstancy of the error variance and doesnot depict linearity among all the models for the different levels of the HHA_score. Also, the normal QQ or normal probability plot deviates higher from normality.
+So, we see that these interactions do not give any meaningful results.
+
+
+# Discussion
+
+## Key results
+<!-- Summarise key results with reference to study objectives -->
+The study suggested that simultaneous log transform of the response variables `inpatient_beds_7_day_avg` and `total_icu_beds_7_day_avg` with the predictor variable `Low Income Area LIA County.SAIPE Poverty Percentage` describe how hospital capacity is associated with community vulnerabilities. We also found out that the variables `inpatient_beds_used_covid_7_day_avg` and `HHA_Score` describe how hospital capacity is associated with community vulnerabilities. Overall, the study revealed that the log simultaneous transformation explained well how hospital capacity is associated with community vulnerabilities. This shows that hospital capacity is associted with some of the community vulnerability measures. 
+
+The residual plot revealed some potential outliers whose influence on our models will be treated in our next analysis.
+
+
+## Limitations
+<!-- Discuss limitations of the study, taking into account sources of potential bias or imprecision. Discuss both direction and magnitude of any potential bias -->
+We want to formally put on record that the results and conclusions have to be considered alongside the follow caveats or limitations:
+
+- The data provided to us for the analysis consisted of some observations but not all the data covering the entire population. For instance, due to the large size of the original data sets only a few were subsetted from the Covid hospital capacity data set. Since this selection was not random we think the final data used is not representative of the study population.
+- The model selection procedure from the initial stage for selecting the appropriate predictor variable for each response variable is somewhat rudimentary. We know better selection procedures, such as stepwise regression, exist but clearly the scope of what has been studied at this stage of the course does not allow for that.
+- We were constrained in this study to use only a simple linear regression model when a multiple regression model or other advanced modeling algorithms would have led to better performance.
+- Lack of adequate previous research studies on the topic.
+<!-- - Time constraints.  -->
+- We think they should have provided the raw data and not just the averages since the averages serves as the center of the observation if there are no outliers of any leverage points.
+
+
+## Interpretation
+<!-- Give a cautious overall interpretation of results considering objectives, limitations, multiplicity of analyses, results from similar studies, and other relevant evidence -->
+<!--  -->
+<!-- Discuss the generalisability (external validity) of the study results -->
+
+We observed that at 5% significance level, the slope and intercept for the three models both fall in their respective confidence intervals. Hence, the slope and intercept for the three models are statistically significant. 
+
+We also observed that the model between `total_icu_beds_7_day_avg` and `Low Income Area LIA County.SAIPE Poverty Percentage` had $R^2$ value of *0.0269693*, *R^2=0.0268039* for the model between inpatient_beds_7_day_avg and `Low Income Area LIA County.SAIPE Poverty Percentage` and *R^2=0.0556804* the model between inpatient_beds_used_covid_7_day_avg and HHA.Score is  *R^2=0.0556804*. Thus, we see that about 5% of the variation in inpatient_beds_used_covid_7_day_avg is explained by using `HHA.Score` to predict inpatient_beds_used_covid_7_day_avg.Also, 2% of the variation in total_icu_beds_7_day_avg is explained by using `Low Income Area LIA County.SAIPE Poverty Percentage` to predict total_icu_beds_7_day_avg and 2% of the variation in inpatient_beds_7_day_avg is explained by using `Low Income Area LIA County.SAIPE Poverty Percentage` to predict inpatient_beds_7_day_avg.
+
+## Generalisability
+
+Overall, we think our results do not generalize well to the population under consideration for the followin reasons. Instead of simply subsetting the first 5010 observations to obtain a manageable sample size, a random sample representative of the population could have been obtained to enhance the generalizability of our results to the entire population and probably beyond. Moreover, the fact that the study was limited to only the State of Texas also means that, though the study data was collected across US, sadly our results cannot be generalized to the entire US for decision making that will affect the whole nation.
+
+
+# Appendix 
+## A: Models from which the initial "best" models were selected for Further Analyses
+
+### Initial Model results for `inpatient_beds_7_day_avg`
+```{r "Modeling inpatient_beds", eval=T}
+
+#--- Models for 'inpatient_beds_7_day_avg'
+IBU <- fit_mod(inpatient_beds_7_day_avg, data = merged_TX_sub)
+IBU_log <- fit_mod(inpatient_beds_7_day_avg, data = merged_TX_sub, trans_y = "log")
+IBU_cubert <- fit_mod(inpatient_beds_7_day_avg, data = merged_TX_sub, trans_y = "cubert")
+IBU_sqrt <- fit_mod(inpatient_beds_7_day_avg, data = merged_TX_sub, trans_y = "sqrt")
+
+# display table of model results
+dependent_var <- "inpatient-beds-7-day-avg"
+init_mdl_tbl(IBU, "-", dependent_var)
+init_mdl_tbl(IBU_log, "log", dependent_var)
+init_mdl_tbl(IBU_sqrt, "sqrt", dependent_var)
+init_mdl_tbl(IBU_cubert, "cbrt", dependent_var)
+
+```
+
+
+
+### Initial Model results for `inpatient_beds_used_covid_7_day_avg`
+```{r "Modeling inpatient_covid"}
+#--- Models for 'inpatient_beds_used_7_day_avg'
+IBU_covid <- fit_mod(inpatient_beds_used_covid_7_day_avg, data = merged_TX_sub)
+IBU_covid_log <- fit_mod(inpatient_beds_used_covid_7_day_avg, data = merged_TX_sub, trans_y = "log")
+IBU_covid_sqrt <- fit_mod(inpatient_beds_used_covid_7_day_avg, data = merged_TX_sub, trans_y = "sqrt")
+IBU_covid_cubert <- fit_mod(inpatient_beds_used_covid_7_day_avg, data = merged_TX_sub, trans_y = "cubert")
+
+# display tables of model results
+dependent_var <- "inpatient-beds-used-covid-7-day-avg"
+init_mdl_tbl(IBU_covid, "-", dependent_var)
+init_mdl_tbl(IBU_covid_log, "log", dependent_var)
+init_mdl_tbl(IBU_covid_sqrt, "sqrt", dependent_var)
+init_mdl_tbl(IBU_covid_cubert, "cbrt", dependent_var)
+
+#Diagnostic plot
+# map(IBU_covid$models, plot, which=1:2)
+# map(IBU_covid_log$models, plot, which=1:2)
+# map(IBU_covid_cube$models, plot, which=1:2)
+```
+
+### Initial results for `total_icu_beds_7_day_avg`
+
+```{r "Modeling total_icu"}
+#--- Models for 'total_icu_beds_7_day_avg'
+total_icu <- (fit_mod(total_icu_beds_7_day_avg, data = merged_TX_sub))
+total_icu_log <- (fit_mod(total_icu_beds_7_day_avg, data = merged_TX_sub, trans_y = "log"))
+total_icu_cubert <- (fit_mod(total_icu_beds_7_day_avg, data = merged_TX_sub, trans_y = "cubert"))
+total_icu_sqrt <- (fit_mod(total_icu_beds_7_day_avg, data = merged_TX_sub, trans_y = "sqrt"))
+
+# display tables of model results
+dependent_var <- "total-icu-beds-7-day-avg"
+init_mdl_tbl(total_icu, "-", dependent_var)
+init_mdl_tbl(total_icu_log, "log", dependent_var)
+init_mdl_tbl(total_icu_cubert, "sqrt", dependent_var)
+init_mdl_tbl(total_icu_sqrt, "cbrt", dependent_var)
+```
+
+## B: Model results for other analysis (subgroup)
+
+**Modeling inpatient_beds_7_day_avg as a function of LIA_CS_P on the subgroups of HHA_Score**
+```{r}
+# Create a new dataset for convenient modeling.
+nested_HHAS <- merged_TX_sub %>%
+  # Select variables of interest
+  select(inpatient_beds_7_day_avg, LIA_CS_PP, HHA_Score) %>%
+  nest(-HHA_Score) 
+# Fit a linear regression model between LOS and infection for each region.
+models_HHAS <- nested_HHAS %>%
+  mutate(model = map(data, ~ lm(inpatient_beds_7_day_avg ~ LIA_CS_PP, data = .))) 
+
+# Extracting model result at the parameter level
+ models_HHAS %>% 
+  mutate(result=map(model, tidy, conf.int= TRUE, conf.level=0.95)) %>% 
+  unnest(result) %>%
+  select(-c(data, model)) %>%
+  kable(format="latex", booktabs = T,caption = "Parameter estimates") %>%
+  kable_styling(font_size = 10,  latex_options = c("HOLD_position"))
+ 
+ 
+# Extracting overall model results 
+ models_HHAS %>% 
+  mutate(result=map(model, glance)) %>% 
+  unnest(result) %>%
+  select(HHA_Score, r.squared, adj.r.squared, sigma, F.statistic=statistic, p.value) %>% 
+   mutate(MSE=sigma^2, .keep="unused") %>%
+   kable(format="latex", booktabs = T,caption = "Overall Model Performance Results") %>%
+   kable_styling(font_size = 10,  latex_options = c("HOLD_position"))
+
+ 
+# Diagnostic plot
+#map(models_HHAS$model,plot, which=1:2)
+
+# ---HHAS level 0
+ par(mfrow = c(3, 2))
+ plot(models_HHAS$model[[1]], which=1:2)
+
+# ---HHAS level 15
+ plot(models_HHAS$model[[2]], which=1:2)
+ 
+# ---HHAS level 7
+plot(models_HHAS$model[[3]], which=1:2)
+
+```
+
+
+**Modeling total_icu_beds_7_day_avg as a function of LIA_CS_P on the subgroups of HHA_Score**
+```{r}
+# Create a new dataset for convenient modeling.
+nested_HHAS <- merged_TX_sub %>%
+  # Select variables of interest
+  select(total_icu_beds_7_day_avg, LIA_CS_PP, HHA_Score) %>%
+  nest(-HHA_Score) 
+# Fit a linear regression model between LOS and infection for each region.
+models_HHAS <- nested_HHAS %>%
+  mutate(model = map(data, ~ lm(total_icu_beds_7_day_avg ~ LIA_CS_PP, data = .)))
+
+# Extracting model result at the parameter level
+ models_HHAS %>% 
+  mutate(result=map(model, tidy, conf.int= TRUE, conf.level=0.95)) %>% 
+  unnest(result) %>%
+  select(-c(data, model)) %>%
+  kable(format="latex", booktabs = T,caption = "Parameter estimates") %>%
+  kable_styling(font_size = 10,  latex_options = c("HOLD_position"))
+ 
+ 
+# Extracting overall model results 
+ models_HHAS %>% 
+  mutate(result=map(model, glance)) %>% 
+  unnest(result) %>%
+  select(HHA_Score, r.squared, adj.r.squared, sigma, F.statistic=statistic, p.value) %>% 
+   mutate(MSE=sigma^2, .keep="unused") %>%
+   kable(format="latex", booktabs = T,caption = "Overall Model Performance Results") %>%
+    kable_styling(font_size = 10,  latex_options = c("HOLD_position"))
+
+ 
+# Diagnostic plot
+#map(models_HHAS$model,plot, which=1:2)
+
+# ---HHAS level 0
+ par(mfrow = c(3, 2))
+ plot(models_HHAS$model[[1]], which=1:2)
+
+# ---HHAS level 15
+ plot(models_HHAS$model[[2]], which=1:2)
+ 
+# ---HHAS level 7
+plot(models_HHAS$model[[3]], which=1:2)
+
+```
+
+## C: Effect of categorical independent variables on the dependent variables
+```{r  "EDA dependent vs cat preds", eval=T}
+
+# Boxplot of inpatient_beds_7_day_avg and categorical predictors
+(my_boxplot(is_metro_micro, inpatient_beds_7_day_avg, dat = merged_TX_sub) +
+my_boxplot(HHA_Score, inpatient_beds_7_day_avg, dat = merged_TX_sub)) /
+(my_boxplot(Tribal_Community, inpatient_beds_7_day_avg, dat = merged_TX_sub) +
+my_boxplot(Rural_Score, inpatient_beds_7_day_avg, dat = merged_TX_sub))
+
+# Boxplot of inpatient_beds_used_covid_7_day_avg and categorical predictors
+(my_boxplot(is_metro_micro, inpatient_beds_used_covid_7_day_avg, dat = merged_TX_sub) +
+my_boxplot(HHA_Score, inpatient_beds_used_covid_7_day_avg, dat = merged_TX_sub)) /
+(my_boxplot(Tribal_Community, inpatient_beds_used_covid_7_day_avg,  dat = merged_TX_sub) +
+my_boxplot(Rural_Score, inpatient_beds_used_covid_7_day_avg, dat = merged_TX_sub))
+
+# Boxplot of total_icu_beds_7_day_avg and categorical predictors
+(my_boxplot(is_metro_micro, total_icu_beds_7_day_avg, dat = merged_TX_sub) +
+my_boxplot(HHA_Score, total_icu_beds_7_day_avg, dat = merged_TX_sub)) /
+(my_boxplot(Tribal_Community, total_icu_beds_7_day_avg, dat = merged_TX_sub) +
+my_boxplot(Rural_Score, total_icu_beds_7_day_avg, dat = merged_TX_sub))
+
+```
+
+## D
+
+```{r}
+## Coefficient of correlation between the ordered residuals and their expected values under ## normality
+my_CC <- function(model, dat)
+{
+  corr <- cbind(
+    "Residual"        = round(resid(model), 2),
+    "Rank"            = rank(resid(model)),
+    "Exp. Value under Normality" = round(sqrt(deviance(model) / df.residual(model))*                     qnorm((rank(resid(model)) - 0.375) / (nrow(dat) + 0.25)), 2)
+  )
+  cor_test <- cor.test(corr[,3], corr[,1])
+  
+  return(cor_test)
+}
+
+### Lowess curve and Regression confidence band
+my_LCCBS <- function(x,y,dat, mod)
+{
+  plot( y~ x, dat, xlab = "Predictor", ylab = "Response")
+  title("Lowess Curve and Linear Regression Confidence Bands")
+  with(dat, lines(loess.smooth(x, y)), col = "red")
+  
+  # Gather confidence bands, ordered by x, and add lines to plot
+  order_x <- order(as.vector(x))
+  ci <- cbind(model.frame(mod), predict(mod, int = "c"))[order_x, ]
+  lines(lwr ~ x, ci, col = "blue", lty = "dashed" )
+  lines(upr ~ x, ci, col = "blue", lty = "dashed" )
+}
+
+my_CC(mod_IB_LIA, merged_TX_sub)
+my_CC(mod_IB_LIA1, merged_TX_sub)
+
+my_LCCBS(merged_TX_sub$LIA_CS_PP,merged_TX_sub$inpatient_beds_7_day_avg, merged_TX_sub,mod_IB_LIA)
+my_LCCBS(merged_TX_sub$LIA_CS_PP,log(merged_TX_sub$inpatient_beds_7_day_avg), merged_TX_sub,mod_IB_LIA1)
+```
+
+
+
+# References
+
+- Tsai, Thomas C., et al. "Association of community-level social vulnerability with US acute care hospital intensive care unit capacity during COVID-19." Healthcare. Vol. 10. No. 1. Elsevier, 2022.
+
+- Grimm, Christi A. "Hospitals reported that the COVID-19 pandemic has significantly strained health care delivery." (2021). Accessed from (https://oig.hhs.gov/oei/reports/OEI-09-21-00140.pdf) on 03/08/2022

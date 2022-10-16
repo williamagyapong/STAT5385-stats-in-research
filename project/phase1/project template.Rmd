@@ -1,0 +1,81 @@
+---
+title: "Project Template for STAT 5385"
+lang: en
+output: word_document
+---
+
+```{r "Load libraries", echo=FALSE, message=FALSE, warning=FALSE}
+
+```
+
+```{r "Load data"}
+
+```
+
+```{r "Munge data"}
+
+```
+
+resources for the background
+https://www.ncbi.nlm.nih.gov/pmc/articles/PMC8692088/
+
+# Abstract
+(a) Describe study purpose
+(b) Provide balanced summary of what was done and what was found
+
+# Introduction
+
+## Background/rationale
+
+Explain the scientific background and rationale for the investigation being reported
+
+## Objectives	
+State specific objectives, including any prespecified hypotheses
+
+## Setting
+Describe the setting, locations, and relevant dates, including periods of recruitment, exposure, follow-up, and data collection
+
+## Participants	
+Describe participants here
+
+## Variables
+Clearly define all outcomes, exposures, predictors, potential confounders, and effect modifiers. Give diagnostic criteria, if applicable
+
+## Data sources/ measurement
+For each variable of interest, give sources of data and details of methods of assessment (measurement). Describe comparability of assessment methods if there is more than one group
+
+## Bias
+Describe any efforts to address potential sources of bias
+
+## Study size
+Explain how the study size was arrived at
+
+
+## Statistical methods
+Describe all statistical methods, including those used to control for confounding  
+
+# Results
+
+## Descriptive data	
+Give characteristics of study participants available, information on exposures and potential confounders, and any missing data
+
+
+## Main results	
+Describe in detail results and provide in context description
+
+## Other analyses	
+Report other analyses done—eg analyses of subgroups and interactions, and sensitivity analyses
+
+# Discussion
+
+## Key results
+Summarise key results with reference to study objectives
+
+## Limitations
+Discuss limitations of the study, taking into account sources of potential bias or imprecision. Discuss both direction and magnitude of any potential bias
+
+## Interpretation
+Give a cautious overall interpretation of results considering objectives, limitations, multiplicity of analyses, results from similar studies, and other relevant evidence
+
+## Generalisability
+Discuss the generalisability (external validity) of the study results

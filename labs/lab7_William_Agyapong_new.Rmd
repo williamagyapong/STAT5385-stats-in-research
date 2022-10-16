@@ -1,0 +1,153 @@
+---
+title: 'STAT 5385: Lab `r params$lab_number`'
+author: "Willliam Ofosu Agyapong"
+date: "`r format(Sys.Date(), '%d/%m/%Y')`"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    number_section: yes
+header-includes:
+  - \usepackage{fancyhdr}
+  - \pagestyle{fancy}
+  - \fancyhf{}
+  - \rhead{William O. Agyapong}
+  - \lhead{STAT 5385 - Lab `r params$lab_number`}
+  - \cfoot{\thepage}
+geometry: margin = 0.8in
+fontsize: 10pt
+params:
+  lab_number: 7
+---
+
+
+```{r setup, include=FALSE}
+# Set global options for output rendering
+knitr::opts_chunk$set(echo = T, warning = F, message = F, fig.align = "center")
+
+# Load required packages
+# library(summarytools)
+library(dplyr)
+# library(kableExtra)
+library(knitr)
+
+
+# Set the current working directory to the file path
+setwd(dirname(rstudioapi::getSourceEditorContext()$path)) 
+
+# Set default rounding to 4 decimal places
+options(digits = 4)
+```
+
+
+# Question: How are the variables associated and how do they uniquely contribute information about brand preference?
+
+Below are the variables of interest from the brand preference data set:
+
+- $X_1$: Moisture content
+
+- $X_2$: Sweetness
+
+- $Y$: Degree of brand liking
+
+Henceforth, we shall use $X_1$, $X_2$, and $Y$ throughout without any ambiguity.
+
+
+## Data read-in
+```{r}
+brand <- read.table("../Data Sets/Chapter  6 Data Sets/CH06PR05.txt")
+colnames(brand)=c("Y","X1","X2")
+kable(head(brand))
+
+```
+
+## Exploration of the association among variables
+```{r}
+library(corrplot)
+(brand_cmat <- cor(brand))
+corrplot(brand_cmat, main="Correlation plot")
+
+
+
+# Scatter plot diagram
+pairs(brand, main="Scatter plot diagram")
+```
+The above diagrams give us a sense of the direction and the strength of pairwise association existing among the underlying variables. For instance, it is clear that, with correlation coefficient of `0.8924` and by visual inspection of the correlation plot and scatter plots, there is a strong positive linear relationship between $X_1$ and $Y$. On the other hand, $X_2$ is weakly linearly related to $Y$, with a slight upward trend. The predictors $X_1$ and $X_2$ are not related or associated so multicollinearity would not be an issue here. In fact, the correlation coefficient between $X_1$ and $X_2$ is zero.
+
+## Relative contributions of $X_1$ and $X_2$ on $Y$
+```{r}
+# muiltiple linear regression model
+brand_mod <- lm(Y ~ ., data = brand)
+summary(brand_mod)
+
+library(relaimpo)
+calc.relimp(brand_mod,type=c("lmg", "last", "first", "betasq", "pratt", "genizi", "car"),rela=TRUE)
+
+```
+
+- $r^2_{Y1|2} = 0.8365$: This suggests that approximately $83.7 \%$ of the variation in $Y$ is explained by $X_1$ if $X_2$ is already in the model.
+
+- $r^2_{Y2|1} = 0.1635$: Approximately $16.4 \%$ of the variation in $Y$ is explained by $X_2$ if $X_1$ is already in the model.
+
+This tells us that the moisture content ($X_1$) uniquely contributes so much more in explaining the variation in the the brand preference ($Y$) than the sweetness ($X_2$) does.
+
+Interestingly, all the relative importance metrics are the same. For example, as seen from the "last" and "first" columns, the contribution of $X_1$ on the brand preference remains the same (0.8365) whether only  $X_1$ is included in the model or both $X_1$ and $X_2$ are included in the model. The same can be said of $X_2$. A most likely reason is the fact that the two predictors, $X_1$ and $X_2$, are uncorrelated as we already observed. 
+
+***Solution to problem 7.4 is included only because I had already worked on it before the new instruction was given in today's class.***
+
+# Problem 7.4
+
+## Data Read-in
+```{r}
+# Reading in required data
+grocery <- read.table("../Data Sets/Chapter  6 Data Sets/CH06PR09.txt")
+# Y: Total labor hours
+# X1: number of cases shipped
+# X2: the indirect costs of the total labor hours as a percentage
+# X3: holiday, coded 1 if the week has a holiday and 0 otherwise
+colnames(grocery) <- c("Y","X1", "X2", "X3")
+kable(head(grocery, 6), caption = "Grocery Retailer data set")
+```
+
+## Part (a): ANOVA Table for Extra Sums of Squares
+```{r}
+full_mod <- lm(Y ~ X1 + X3 + X2, data = grocery)
+# summary(mod_full)
+
+# Obtain Type I sum of squares
+kable(anova(full_mod), caption = "ANOVA Table with extra sums of squares")
+```
+
+## Part (b): 
+```{r}
+kable(drop1(full_mod, ~ X2, test = "F"), caption = "Resulting Partial F-test ANOVA Table")
+```
+
+
+
+The F test statistic is `0.33` and the corresponding p-value is `0.57`. Since the p-value is greater than `0.05` we fail to reject $H_0$ and conclude that $X_2$ can be dropped from the regression model given that $X_1$ and $X_3$ are retained.
+
+## Part (c): Comparing extra sums of squares
+```{r}
+mod_X1X2 <- lm(Y ~ X1 + X2, data = grocery)
+mod_X2X1 <- lm(Y ~ X2 + X1, data = grocery)
+kable(anova(mod_X1X2), caption = "ANOVA Table: Extra sums of squares with X1 and with X2 given X1")
+# 136366 + 5726
+kable(anova(mod_X2X1), caption = "ANOVA Table: Extra sums of squares with X2 and with X1 given X2")
+# 11395 + 130697
+
+```
+From Tables 4 and 5 we have:
+$$SSR(X_1) + SSR(X_2|X_1) = 136366 + 5726 = 142092$$
+, and
+$$SSR(X_2) + SSR(X_1|X_2) =  11395 + 130697 = 142092.$$
+Hence,  $SSR(X_1) + SSR(X_2|X_1) = SSR(X_2) + SSR(X_1|X_2)$.
+
+And yes, we expect this to always be the case.
+
+
+<!-- # Problem 7.13 -->
+
+<!-- ```{r} -->
+
+<!-- ``` -->
+
